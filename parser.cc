@@ -48,7 +48,6 @@ static uint32_t parse_statement(TokenSlice tokens) {
         return 0;
     }
 
-    uint32_t token_idx = 0;
     if (tokens[0].type == TokenType::Identifier) {
         if (tokens[1].type == ':') {
             return 1 + parse_def(tokens);
@@ -64,9 +63,8 @@ static uint32_t parse_statement(TokenSlice tokens) {
         compile_assert(parse_length, "Invalid expression after return", tokens[1].line);
         return 2 + parse_length;
     }
-    else {
-        return 0;
-    }
+
+    return 0;
 }
 
 static uint32_t parse_statement_list(TokenSlice tokens) {

@@ -1,4 +1,4 @@
-CPPFLAGS = -MMD
+CPPFLAGS = -MMD -Wall -Wextra
 CXXFLAGS = -std=c++11
 objects = compiler.o lexer.o parser.o
 
