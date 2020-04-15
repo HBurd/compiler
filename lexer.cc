@@ -31,63 +31,20 @@ static Token single_char_to_token(char c)
     switch (c)
     {
         case '(':
-            token.type = TokenType::OpenParen;
-            break;
         case ')':
-            token.type = TokenType::CloseParen;
-            break;
         case '{':
-            token.type = TokenType::OpenBrace;
-            break;
         case '}':
-            token.type = TokenType::CloseBrace;
-            break;
         case '+':
-            token.type = TokenType::Plus;
-            break;
         case '=':
-            token.type = TokenType::Equals;
-            break;
         case ':':
-            token.type = TokenType::Colon;
-            break;
         case ';':
-            token.type = TokenType::Semicolon;
+            token.type = c;
             break;
         default:
             token.type = TokenType::Invalid;
     }
 
     return token;
-}
-
-const char* Token::to_string()
-{
-    switch (type)
-    {
-        case TokenType::Invalid:
-            return "Invalid";
-        case TokenType::OpenParen:
-            return "OpenParen";
-        case TokenType::CloseParen:
-            return "CloseParen";
-        case TokenType::OpenBrace:
-            return "OpenBrace";
-        case TokenType::CloseBrace:
-            return "CloseBrace";
-        case TokenType::Plus:
-            return "Plus";
-        case TokenType::Equals:
-            return "Equals";
-        case TokenType::Colon:
-            return "Colon";
-        case TokenType::Semicolon:
-            return "Semicolon";
-        case TokenType::Return:
-            return "Return";
-        case TokenType::Identifier:
-            return "Identifier";
-    }
 }
 
 static Token get_keyword_token(const char *word)
