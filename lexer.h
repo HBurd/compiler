@@ -16,10 +16,7 @@ namespace TokenType
 struct Token
 {
     uint32_t type = TokenType::Invalid;
-    union
-    {
-        uint32_t identifier_id = 0;
-    };
+    uint32_t line = 0;
 };
 
 void lex(const char* file, std::vector<Token>& tokens);

@@ -68,8 +68,13 @@ void lex(const char* file, std::vector<Token>& tokens)
     //  - A consecutive sequence of letters, digits or underscores
     //  - a single character in (){}+=:;
     uint32_t position = 0;
+    uint32_t line = 1;
     while (file[position])
     {
+        if (file[position] == '\n')
+        {
+            ++line;
+        }
         if (valid_token_char(file[position]))
         {
             if (valid_identifier_char(file[position]))
@@ -83,13 +88,19 @@ void lex(const char* file, std::vector<Token>& tokens)
                 uint32_t identifier_length = position - identifier_start;
                 assert(identifier_length < IDENTIFIER_BUF_SIZE); // ensure 1 extra for terminator
                 memcpy(identifier_buf, file + identifier_start, identifier_length);
+
+                Token new_token = get_keyword_token(identifier_buf);
+                new_token.line = line;
                 
-                tokens.push_back(get_keyword_token(identifier_buf));
+                tokens.push_back(new_token);
             }
             else
             {
                 // for now, all other tokens have length 1
-                tokens.push_back(single_char_to_token(file[position]));
+                Token new_token = single_char_to_token(file[position]);
+                new_token.line = line;
+
+                tokens.push_back(new_token);
                 ++position;
             }
         }

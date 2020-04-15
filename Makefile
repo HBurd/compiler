@@ -11,6 +11,6 @@ compiler: $(objects)
 	g++ $(objects) -o compiler $(CXXFLAGS) $(CPPFLAGS)
 
 test: compiler
-	./compiler test.hb
+	-./compiler test.hb
 
 -include *.d
