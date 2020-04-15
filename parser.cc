@@ -39,8 +39,8 @@ static uint32_t parse_expression(TokenSlice tokens) {
         ++token_idx;
     }
     
-    // does not include semicolon
-    return token_idx;
+    // includes semicolon
+    return token_idx + 1;
 }
 
 static uint32_t parse_statement(TokenSlice tokens) {
@@ -50,18 +50,20 @@ static uint32_t parse_statement(TokenSlice tokens) {
 
     if (tokens[0].type == TokenType::Identifier) {
         if (tokens[1].type == ':') {
-            return 1 + parse_def(tokens);
+            uint32_t parse_length = parse_def(tokens);
+            compile_assert(parse_length, "Invalid definition", tokens[0].line);
+            return parse_length;
         }
         else if (tokens[1].type == '=') {
             uint32_t parse_length = parse_expression(tokens.from(2));
             compile_assert(parse_length, "Invalid expression on rhs of assignment", tokens[1].line);
-            return 3 + parse_length;
+            return 2 + parse_length;
         }
     }
     else if (tokens[0].type == TokenType::Return) {
         uint32_t parse_length = parse_expression(tokens.from(1));
         compile_assert(parse_length, "Invalid expression after return", tokens[1].line);
-        return 2 + parse_length;
+        return 1 + parse_length;
     }
 
     return 0;
