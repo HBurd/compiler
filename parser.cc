@@ -68,7 +68,7 @@ static uint32_t parse_expression(TokenSlice tokens, Array<ASTNode, MAX_AST_SIZE>
     if (OPERATOR_PRECEDENCE[tokens[token_idx + 1].type] > precedence) {
         token_idx += parse_expression(tokens, ast, precedence + 1);
     }
-    else if (OPERATOR_PRECEDENCE[tokens[token_idx + 1].type] <= precedence){
+    else {
         ast->push(ASTNode{ASTNodeType::Identifier});
     }
     
