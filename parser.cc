@@ -24,8 +24,14 @@ const char* AST_NODE_TYPE_NAME[] = {
     [ASTNodeType::StatementList] = "StatementList",
     [ASTNodeType::VariableDef] = "VariableDef",
     [ASTNodeType::Assignment] = "Assignment",
-    [ASTNodeType::Expression] = "Expression",
     [ASTNodeType::Return] = "Return",
+    [ASTNodeType::Identifier] = "Identifier",
+    [ASTNodeType::BinaryOperator] = "BinaryOperator",
+};
+
+uint8_t OPERATOR_PRECEDENCE[] = {
+    ['*'] = 2,
+    ['+'] = 1,
 };
 
 struct TokenSlice {
@@ -51,15 +57,35 @@ struct TokenSlice {
 
 static uint32_t parse_def(TokenSlice tokens, Array<ASTNode, MAX_AST_SIZE>* ast);
 
-static uint32_t parse_expression(TokenSlice tokens, Array<ASTNode, MAX_AST_SIZE>* ast) {
+// We stick expressions on the AST in RPN to make left to right precedence easier
+static uint32_t parse_expression(TokenSlice tokens, Array<ASTNode, MAX_AST_SIZE>* ast, uint8_t precedence) {
+
     uint32_t token_idx = 0;
-    while (tokens[token_idx].type != ';') {
-        ++token_idx;
+
+    compile_assert(tokens[token_idx].type == TokenType::Identifier, "Invalid expression", tokens[token_idx].line);
+
+    // recurse until precedence matches that of the next operator
+    if (OPERATOR_PRECEDENCE[tokens[token_idx + 1].type] > precedence) {
+        token_idx += parse_expression(tokens, ast, precedence + 1);
     }
-    ast->push(ASTNode{ASTNodeType::Expression});
+    else if (OPERATOR_PRECEDENCE[tokens[token_idx + 1].type] <= precedence){
+        ast->push(ASTNode{ASTNodeType::Identifier});
+    }
     
-    // includes semicolon
-    return token_idx + 1;
+    while (OPERATOR_PRECEDENCE[tokens[token_idx + 1].type] == precedence) {
+        uint32_t op_type = tokens[token_idx + 1].type;
+        token_idx += 2;
+
+        // now recurse so that the left expression is on the AST
+        token_idx += parse_expression(tokens.from(token_idx), ast, precedence + 1);
+
+        ASTNode op_node{ASTNodeType::BinaryOperator};
+        std::cout << (char)op_type << std::endl;
+        op_node.op = op_type;
+        ast->push(op_node);
+    }
+
+    return token_idx;
 }
 
 static uint32_t parse_statement(TokenSlice tokens, Array<ASTNode, MAX_AST_SIZE>* ast) {
@@ -75,17 +101,21 @@ static uint32_t parse_statement(TokenSlice tokens, Array<ASTNode, MAX_AST_SIZE>*
         }
         else if (tokens[1].type == '=') {
             ast->push(ASTNode{ASTNodeType::Assignment}).children = 1;
-            uint32_t parse_length = parse_expression(tokens.from(2), ast);
+            uint32_t parse_length = 2 + parse_expression(tokens.from(2), ast, 1);
+            std::cout << "assignment expr" << std::endl;
             compile_assert(parse_length, "Invalid expression on rhs of assignment", tokens[1].line);
             return 2 + parse_length;
         }
     }
     else if (tokens[0].type == TokenType::Return) {
         ast->push(ASTNode{ASTNodeType::Return}).children = 1; // TODO: can only return an expression right now
-        uint32_t parse_length = parse_expression(tokens.from(1), ast);
+        uint32_t parse_length = 2 + parse_expression(tokens.from(1), ast, 1);
+        std::cout << "return expr" << std::endl;
         compile_assert(parse_length, "Invalid expression after return", tokens[1].line);
         return 1 + parse_length;
     }
+
+    std::cout << "Invalid statement starting with token id " << tokens[0].type << ", line " << tokens[0].line << std::endl;
 
     return 0;
 }
@@ -142,7 +172,8 @@ static uint32_t parse_def(TokenSlice tokens, Array<ASTNode, MAX_AST_SIZE>* ast) 
         // this is a variable / constant def
         ast->push(ASTNode{ASTNodeType::VariableDef}).children = 1;
 
-        uint32_t parsed_length = parse_expression(tokens.from(3), ast);
+        uint32_t parsed_length = 2 + parse_expression(tokens.from(3), ast, 1);
+        std::cout << "def expr, line " << tokens[3].line << std::endl;
         compile_assert(parsed_length, "Invalid expression on rhs of variable definition", tokens[2].line);
 
         return 3 + parsed_length;
@@ -162,8 +193,7 @@ static void validate_function_def(const Array<ASTNode, MAX_AST_SIZE>& ast, uint3
 static void validate_variable_def(const Array<ASTNode, MAX_AST_SIZE>& ast, uint32_t* ast_pos);
 
 static void validate_expression(const Array<ASTNode, MAX_AST_SIZE>& ast, uint32_t* ast_pos) {
-    assert(ast[*ast_pos].type == ASTNodeType::Expression);
-    assert(ast[*ast_pos].children == 0);
+    // TODO:
     *ast_pos += 1;
 }
 
@@ -281,15 +311,21 @@ Array<ASTNode, MAX_AST_SIZE>* parse(const std::vector<Token>& tokens) {
         }
     }
 
+    std::cout << ast->size << std::endl;
+
     // now output the AST for test
     for (uint32_t i = 0; i < ast->size; ++i) {
         std::cout << AST_NODE_TYPE_NAME[ast->data[i].type]
-                  << "(" << ast->data[i].children << ")"
-                  << std::endl;
+                  << "(" << ast->data[i].children << ")";
+
+        if (ast->data[i].type == ASTNodeType::BinaryOperator) {
+            std::cout << ast->data[i].op;
+        }
+        std::cout << std::endl;
     }
 
     // TODO: This is only here for testing
-    validate_ast(*ast);
+    //validate_ast(*ast);
 
     return ast;
 }

@@ -10,6 +10,8 @@ namespace TokenType
         Return = 128,
         Identifier,
         Invalid,
+
+        Count
     };
 }
 

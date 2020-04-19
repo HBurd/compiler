@@ -11,18 +11,26 @@ namespace ASTNodeType {
         StatementList,
         VariableDef,
         Assignment,
-        Expression,
         Return,
+        Identifier,
+        BinaryOperator,
 
         Count
     };
 }
 
 extern const char* AST_NODE_TYPE_NAME[ASTNodeType::Count];
+extern uint8_t OPERATOR_PRIORITY[TokenType::Count];
 
 struct ASTNode { 
     uint32_t type = ASTNodeType::Invalid;
     uint32_t children = 0;
+    //ASTNode* child1 = nullptr;
+    //ASTNode* next = nullptr; // next child
+
+    union {
+        char op;
+    };
 
     ASTNode() = default;
     ASTNode(uint32_t type_): type(type_){}

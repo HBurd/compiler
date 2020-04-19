@@ -20,6 +20,7 @@ static bool valid_token_char(char c)
         (c == '{') ||
         (c == '}') ||
         (c == '+') ||
+        (c == '*') ||
         (c == '=') ||
         (c == ':') ||
         (c == ';');
@@ -35,6 +36,7 @@ static Token single_char_to_token(char c)
         case '{':
         case '}':
         case '+':
+        case '*':
         case '=':
         case ':':
         case ';':
@@ -66,7 +68,7 @@ void lex(const char* file, std::vector<Token>& tokens)
 {
     // A token is one of
     //  - A consecutive sequence of letters, digits or underscores
-    //  - a single character in (){}+=:;
+    //  - a single character in (){}+*=:;
     uint32_t position = 0;
     uint32_t line = 1;
     while (file[position])
