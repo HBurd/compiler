@@ -25,8 +25,7 @@ extern uint8_t OPERATOR_PRIORITY[TokenType::Count];
 struct ASTNode { 
     uint32_t type = ASTNodeType::Invalid;
     uint32_t children = 0;
-    //ASTNode* child1 = nullptr;
-    //ASTNode* next = nullptr; // next child
+    ASTNode* next = nullptr; // next child
 
     union {
         char op;
