@@ -51,10 +51,6 @@ struct TokenSlice {
     }
 };
 
-// ----------------------------
-// Functions for generating AST
-// ----------------------------
-
 // TODO: there must be a better way to structure this so I don't need to traverse the list for this
 static void set_next(ASTNode* node, ASTNode* next) {
     while(node->next) {
@@ -62,6 +58,10 @@ static void set_next(ASTNode* node, ASTNode* next) {
     }
     node->next = next;
 }
+
+// ----------------------------
+// Functions for generating AST
+// ----------------------------
 
 static uint32_t parse_def(TokenSlice tokens, Array<ASTNode, MAX_AST_SIZE>* ast, ASTNode** node);
 
@@ -78,8 +78,8 @@ static uint32_t parse_expression(TokenSlice tokens, Array<ASTNode, MAX_AST_SIZE>
         compile_assert(subexpr, "Empty subexpression", tokens[token_idx].line);
         
         *expr = subexpr;
-        ++token_idx;
         compile_assert(tokens[token_idx].type == ')', "Missing ')'", tokens[token_idx].line);
+        ++token_idx;
     }
     else if (tokens[0].type == TokenType::Identifier) {
         // recurse until precedence matches that of the next operator
@@ -87,13 +87,13 @@ static uint32_t parse_expression(TokenSlice tokens, Array<ASTNode, MAX_AST_SIZE>
             // this sticks the subexpr (of higher precedence) onto the AST
             token_idx += parse_expression(tokens, ast, precedence + 1, expr);
 
-            // now token_idx is at the end of a precedence + 1 subexpression
+            // now token_idx is after a precedence + 1 subexpression
 
-            assert(OPERATOR_PRECEDENCE[tokens[token_idx + 1].type] <= precedence);
+            assert(OPERATOR_PRECEDENCE[tokens[token_idx].type] <= precedence);
 
-            while (OPERATOR_PRECEDENCE[tokens[token_idx + 1].type] == precedence) {
-                uint32_t op = tokens[token_idx + 1].type;
-                token_idx += 2;
+            while (OPERATOR_PRECEDENCE[tokens[token_idx].type] == precedence) {
+                uint32_t op = tokens[token_idx].type;
+                ++token_idx;
 
                 // now recurse so that the right expression is on the AST
                 ASTNode* right_subexpr;
@@ -109,9 +109,7 @@ static uint32_t parse_expression(TokenSlice tokens, Array<ASTNode, MAX_AST_SIZE>
             }
         }
         else {
-            compile_assert(OPERATOR_PRECEDENCE[tokens[token_idx + 1].type]
-                || tokens[token_idx + 1].type == ';' || tokens[token_idx + 1].type == ')',
-                "Unknown operator terminating subexpression", tokens[token_idx].line);
+            ++token_idx;
             *expr = &ast->push(ASTNode{ASTNodeType::Identifier});
         }
     }
@@ -119,6 +117,12 @@ static uint32_t parse_expression(TokenSlice tokens, Array<ASTNode, MAX_AST_SIZE>
         compile_fail("Invalid expression", tokens[0].line);
     }
 
+    compile_assert(
+        OPERATOR_PRECEDENCE[tokens[token_idx].type] || tokens[token_idx].type == ';' || tokens[token_idx].type == ')',
+        "Unknown token terminating expression",
+        tokens[token_idx].line);
+
+    assert(OPERATOR_PRECEDENCE[tokens[token_idx].type] < precedence);
     return token_idx;
 }
 
@@ -136,7 +140,7 @@ static uint32_t parse_statement(TokenSlice tokens, Array<ASTNode, MAX_AST_SIZE>*
         else if (tokens[1].type == '=') {
             *node = &ast->push(ASTNode{ASTNodeType::Assignment});
             (*node)->children = 1;
-            uint32_t parse_length = 2 + parse_expression(tokens.from(2), ast, 1, &(*node)->next);
+            uint32_t parse_length = 1 + parse_expression(tokens.from(2), ast, 1, &(*node)->next);
             compile_assert(parse_length, "Invalid expression on rhs of assignment", tokens[1].line);
             return 2 + parse_length;
         }
@@ -144,7 +148,7 @@ static uint32_t parse_statement(TokenSlice tokens, Array<ASTNode, MAX_AST_SIZE>*
     else if (tokens[0].type == TokenType::Return) {
         *node = &ast->push(ASTNode{ASTNodeType::Return}); // TODO: can only return an expression right now
         (*node)->children = 1;
-        uint32_t parse_length = 2 + parse_expression(tokens.from(1), ast, 1, &(*node)->next);
+        uint32_t parse_length = 1 + parse_expression(tokens.from(1), ast, 1, &(*node)->next);
         compile_assert(parse_length, "Invalid expression after return", tokens[1].line);
         return 1 + parse_length;
     }
@@ -214,7 +218,7 @@ static uint32_t parse_def(TokenSlice tokens, Array<ASTNode, MAX_AST_SIZE>* ast, 
         *node = &ast->push(ASTNode{ASTNodeType::VariableDef});
         (*node)->children = 1;
 
-        uint32_t parsed_length = 2 + parse_expression(tokens.from(3), ast, 1, &(*node)->next);
+        uint32_t parsed_length = 1 + parse_expression(tokens.from(3), ast, 1, &(*node)->next);
         compile_assert(parsed_length, "Invalid expression on rhs of variable definition", tokens[2].line);
 
         return 3 + parsed_length;
