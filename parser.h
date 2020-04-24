@@ -13,6 +13,7 @@ namespace ASTNodeType {
         Assignment,
         Return,
         Identifier,
+        Number,
         BinaryOperator,
 
         Count
@@ -28,7 +29,8 @@ struct ASTNode {
     ASTNode* next = nullptr; // next child
 
     union {
-        char op;
+        char op;        // for operator
+        char value;     // for number
     };
 
     ASTNode() = default;

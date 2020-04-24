@@ -2,39 +2,42 @@
 #include <stdint.h>
 #include <iostream>
 #include <cstdlib>
+#include <cassert>
 
 using std::cout;
 using std::endl;
 
-// TODO: big waste of space, not scalable
-constexpr uint32_t MAX_LINE_COUNT = 1 << 20;
-
 // TODO: This is temporary, obviously we will need multiple files eventually
 const char* file_g = nullptr;
-const char* line_index_g[MAX_LINE_COUNT];
 
 void init_error_reporting(const char* file) {
     file_g = file;
-    
-    // keep track of the start of each line
-    line_index_g[0] = 0;
+}
 
-    uint32_t file_marker = 0;
-    uint32_t line = 0;
-    while(file_g[file_marker]) {
-        if (file_g[file_marker] == '\n') {
-            ++line;
-            line_index_g[line] = file_g + file_marker + 1;
+static const char* find_line(uint32_t line_num)
+{
+    uint32_t line_count = 0;
+    uint32_t position = 0;
+    while (line_count < line_num)
+    {
+        assert(file_g[position]);
+
+        if (file_g[position] == '\n')
+        {
+            ++line_count;
         }
-        ++file_marker;
+
+        ++position;
     }
+
+    return file_g + position;
 }
 
 void compile_assert_with_marker(bool condition, const char* err_msg, uint32_t line_num, uint32_t col_num, uint32_t marker_len) {
     if (!condition) {
         cout << "Line " << line_num + 1 << ": " << err_msg << endl;
 
-        const char* line = line_index_g[line_num];
+        const char* line = find_line(line_num);
         for (uint32_t col = 0; line[col] != '\n'; ++col) {
             cout << line[col];
         }

@@ -15,6 +15,7 @@ const char* AST_NODE_TYPE_NAME[] = {
     [ASTNodeType::Assignment] = "Assignment",
     [ASTNodeType::Return] = "Return",
     [ASTNodeType::Identifier] = "Identifier",
+    [ASTNodeType::Number] = "Number",
     [ASTNodeType::BinaryOperator] = "BinaryOperator",
 };
 
@@ -71,7 +72,7 @@ static uint32_t parse_expression(TokenSlice tokens, Array<ASTNode, MAX_AST_SIZE>
         parse_assert(tokens[token_idx].type == ')', "Missing ')'", tokens[token_idx]);
         ++token_idx;
     }
-    else if (tokens[0].type == TokenType::Name) {
+    else if (tokens[0].type == TokenType::Name || tokens[0].type == TokenType::Number) {
         // recurse until precedence matches that of the next operator
         if (OPERATOR_PRECEDENCE[tokens[token_idx + 1].type] >= precedence) {
             // this sticks the subexpr (of higher precedence) onto the AST
@@ -99,8 +100,18 @@ static uint32_t parse_expression(TokenSlice tokens, Array<ASTNode, MAX_AST_SIZE>
             }
         }
         else {
+            switch (tokens[0].type)
+            {
+                case TokenType::Name:
+                    *expr = &ast->push(ASTNode{ASTNodeType::Identifier});
+                    break;
+                case TokenType::Number:
+                    *expr = &ast->push(ASTNode{ASTNodeType::Number});
+                    break;
+                default:
+                    assert(false);
+            }
             ++token_idx;
-            *expr = &ast->push(ASTNode{ASTNodeType::Identifier});
         }
     }
     else {
