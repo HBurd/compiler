@@ -6,7 +6,7 @@
 #include <cstdlib>
 
 // TODO: should be accessible anywhere
-static void compile_assert(int condition, const char* err_msg, uint32_t line) {
+static void compile_assert(bool condition, const char* err_msg, uint32_t line) {
     if (!condition) {
         std::cout << "Line " << line << ": " << err_msg << std::endl;
         exit(1);
@@ -70,36 +70,53 @@ static uint32_t parse_expression(TokenSlice tokens, Array<ASTNode, MAX_AST_SIZE>
 
     uint32_t token_idx = 0;
 
-    compile_assert(tokens[token_idx].type == TokenType::Identifier, "Invalid expression", tokens[token_idx].line);
+    if (tokens[0].type == '(') {
+        ++token_idx;
 
-    // recurse until precedence matches that of the next operator
-    if (OPERATOR_PRECEDENCE[tokens[token_idx + 1].type] >= precedence) {
-        // this sticks the subexpr (of higher precedence) onto the AST
-        token_idx += parse_expression(tokens, ast, precedence + 1, expr);
-
-        // now token_idx is at the end of a precedence + 1 subexpression
-
-        assert(OPERATOR_PRECEDENCE[tokens[token_idx + 1].type] <= precedence);
+        ASTNode* subexpr = nullptr;
+        token_idx += parse_expression(tokens.from(token_idx), ast, 1, &subexpr);
+        compile_assert(subexpr, "Empty subexpression", tokens[token_idx].line);
         
-        while (OPERATOR_PRECEDENCE[tokens[token_idx + 1].type] == precedence) {
-            uint32_t op = tokens[token_idx + 1].type;
-            token_idx += 2;
+        *expr = subexpr;
+        ++token_idx;
+        compile_assert(tokens[token_idx].type == ')', "Missing ')'", tokens[token_idx].line);
+    }
+    else if (tokens[0].type == TokenType::Identifier) {
+        // recurse until precedence matches that of the next operator
+        if (OPERATOR_PRECEDENCE[tokens[token_idx + 1].type] >= precedence) {
+            // this sticks the subexpr (of higher precedence) onto the AST
+            token_idx += parse_expression(tokens, ast, precedence + 1, expr);
 
-            // now recurse so that the right expression is on the AST
-            ASTNode* right_subexpr;
-            token_idx += parse_expression(tokens.from(token_idx), ast, precedence + 1, &right_subexpr);
+            // now token_idx is at the end of a precedence + 1 subexpression
 
-            set_next(*expr, right_subexpr);
+            assert(OPERATOR_PRECEDENCE[tokens[token_idx + 1].type] <= precedence);
 
-            ASTNode op_node{ASTNodeType::BinaryOperator};
-            op_node.op = op;
-            op_node.children = 2;
-            op_node.next = *expr;
-            *expr = &ast->push(op_node);
+            while (OPERATOR_PRECEDENCE[tokens[token_idx + 1].type] == precedence) {
+                uint32_t op = tokens[token_idx + 1].type;
+                token_idx += 2;
+
+                // now recurse so that the right expression is on the AST
+                ASTNode* right_subexpr;
+                token_idx += parse_expression(tokens.from(token_idx), ast, precedence + 1, &right_subexpr);
+
+                set_next(*expr, right_subexpr);
+
+                ASTNode op_node{ASTNodeType::BinaryOperator};
+                op_node.op = op;
+                op_node.children = 2;
+                op_node.next = *expr;
+                *expr = &ast->push(op_node);
+            }
+        }
+        else {
+            compile_assert(OPERATOR_PRECEDENCE[tokens[token_idx + 1].type]
+                || tokens[token_idx + 1].type == ';' || tokens[token_idx + 1].type == ')',
+                "Unknown operator terminating subexpression", tokens[token_idx].line);
+            *expr = &ast->push(ASTNode{ASTNodeType::Identifier});
         }
     }
     else {
-        *expr = &ast->push(ASTNode{ASTNodeType::Identifier});
+        compile_fail("Invalid expression", tokens[0].line);
     }
 
     return token_idx;
@@ -212,7 +229,13 @@ ASTNode* print_ast_node(ASTNode* node, uint32_t depth) {
     for (uint32_t i = 0; i < depth; ++i) {
         std::cout << "  ";
     }
-    std::cout << AST_NODE_TYPE_NAME[node->type] << std::endl;
+
+    if (node->type == ASTNodeType::BinaryOperator) {
+        std::cout << node->op << std::endl;
+    }
+    else {
+        std::cout << AST_NODE_TYPE_NAME[node->type] << std::endl;
+    }
 
     ASTNode* child = node->next;
     for (uint32_t i = 0; i < node->children; ++i) {
