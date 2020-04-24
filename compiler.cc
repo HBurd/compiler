@@ -3,6 +3,7 @@
 
 #include "lexer.h"
 #include "parser.h"
+#include "report_error.h"
 
 int main(int argc, char **argv)
 {
@@ -18,6 +19,8 @@ int main(int argc, char **argv)
     file_contents[len] = 0;
 
     file.read(file_contents, len);
+
+    init_error_reporting(file_contents);
 
     // get tokens
     std::vector<Token> tokens;

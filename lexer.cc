@@ -20,6 +20,7 @@ static bool valid_token_char(char c)
         (c == '{') ||
         (c == '}') ||
         (c == '+') ||
+        (c == '-') ||
         (c == '*') ||
         (c == '=') ||
         (c == ':') ||
@@ -36,6 +37,7 @@ static Token single_char_to_token(char c)
         case '{':
         case '}':
         case '+':
+        case '-':
         case '*':
         case '=':
         case ':':
@@ -58,7 +60,7 @@ static Token get_keyword_token(const char *word)
     }
     else
     {
-        result.type = TokenType::Identifier;
+        result.type = TokenType::Name;
     }
 
     return result;
@@ -66,18 +68,18 @@ static Token get_keyword_token(const char *word)
 
 void lex(const char* file, std::vector<Token>& tokens)
 {
-    // A token is one of
-    //  - A consecutive sequence of letters, digits or underscores
-    //  - a single character in (){}+*=:;
     uint32_t position = 0;
-    uint32_t line = 1;
+    uint32_t line = 0;
+    uint32_t line_start = 0;
     while (file[position])
     {
         if (file[position] == '\n')
         {
             ++line;
+            ++position;
+            line_start = position;
         }
-        if (valid_token_char(file[position]))
+        else if (valid_token_char(file[position]))
         {
             if (valid_identifier_char(file[position]))
             {
@@ -93,6 +95,8 @@ void lex(const char* file, std::vector<Token>& tokens)
 
                 Token new_token = get_keyword_token(identifier_buf);
                 new_token.line = line;
+                new_token.column = identifier_start - line_start;
+                new_token.len = position - identifier_start;
                 
                 tokens.push_back(new_token);
             }

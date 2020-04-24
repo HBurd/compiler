@@ -1,21 +1,10 @@
 #include "parser.h"
 #include "util.h"
+#include "report_error.h"
 
 #include <iostream>
 #include <cassert>
 #include <cstdlib>
-
-// TODO: should be accessible anywhere
-static void compile_assert(bool condition, const char* err_msg, uint32_t line) {
-    if (!condition) {
-        std::cout << "Line " << line << ": " << err_msg << std::endl;
-        exit(1);
-    }
-}
-
-static void compile_fail(const char* err_msg, uint32_t line) {
-    compile_assert(false, err_msg, line);
-}
 
 const char* AST_NODE_TYPE_NAME[] = {
     [ASTNodeType::Invalid] = "Invalid",
@@ -32,6 +21,7 @@ const char* AST_NODE_TYPE_NAME[] = {
 uint8_t OPERATOR_PRECEDENCE[] = {
     ['*'] = 2,
     ['+'] = 1,
+    ['-'] = 1,  // TODO: how to differentiate unary and binary
 };
 
 struct TokenSlice {
@@ -75,13 +65,13 @@ static uint32_t parse_expression(TokenSlice tokens, Array<ASTNode, MAX_AST_SIZE>
 
         ASTNode* subexpr = nullptr;
         token_idx += parse_expression(tokens.from(token_idx), ast, 1, &subexpr);
-        compile_assert(subexpr, "Empty subexpression", tokens[token_idx].line);
+        parse_assert(subexpr, "Empty subexpression", tokens[token_idx]);
         
         *expr = subexpr;
-        compile_assert(tokens[token_idx].type == ')', "Missing ')'", tokens[token_idx].line);
+        parse_assert(tokens[token_idx].type == ')', "Missing ')'", tokens[token_idx]);
         ++token_idx;
     }
-    else if (tokens[0].type == TokenType::Identifier) {
+    else if (tokens[0].type == TokenType::Name) {
         // recurse until precedence matches that of the next operator
         if (OPERATOR_PRECEDENCE[tokens[token_idx + 1].type] >= precedence) {
             // this sticks the subexpr (of higher precedence) onto the AST
@@ -114,13 +104,13 @@ static uint32_t parse_expression(TokenSlice tokens, Array<ASTNode, MAX_AST_SIZE>
         }
     }
     else {
-        compile_fail("Invalid expression", tokens[0].line);
+        parse_fail("Invalid expression", tokens[0]);
     }
 
-    compile_assert(
+    parse_assert(
         OPERATOR_PRECEDENCE[tokens[token_idx].type] || tokens[token_idx].type == ';' || tokens[token_idx].type == ')',
         "Unknown token terminating expression",
-        tokens[token_idx].line);
+        tokens[token_idx]);
 
     assert(OPERATOR_PRECEDENCE[tokens[token_idx].type] < precedence);
     return token_idx;
@@ -131,17 +121,17 @@ static uint32_t parse_statement(TokenSlice tokens, Array<ASTNode, MAX_AST_SIZE>*
         return 0;
     }
 
-    if (tokens[0].type == TokenType::Identifier) {
+    if (tokens[0].type == TokenType::Name) {
         if (tokens[1].type == ':') {
             uint32_t parse_length = parse_def(tokens, ast, node);
-            compile_assert(parse_length, "Invalid definition", tokens[0].line);
+            parse_assert(parse_length, "Invalid definition", tokens[0]);
             return parse_length;
         }
         else if (tokens[1].type == '=') {
             *node = &ast->push(ASTNode{ASTNodeType::Assignment});
             (*node)->children = 1;
             uint32_t parse_length = 1 + parse_expression(tokens.from(2), ast, 1, &(*node)->next);
-            compile_assert(parse_length, "Invalid expression on rhs of assignment", tokens[1].line);
+            parse_assert(parse_length, "Invalid expression on rhs of assignment", tokens[1]);
             return 2 + parse_length;
         }
     }
@@ -149,7 +139,7 @@ static uint32_t parse_statement(TokenSlice tokens, Array<ASTNode, MAX_AST_SIZE>*
         *node = &ast->push(ASTNode{ASTNodeType::Return}); // TODO: can only return an expression right now
         (*node)->children = 1;
         uint32_t parse_length = 1 + parse_expression(tokens.from(1), ast, 1, &(*node)->next);
-        compile_assert(parse_length, "Invalid expression after return", tokens[1].line);
+        parse_assert(parse_length, "Invalid expression after return", tokens[1]);
         return 1 + parse_length;
     }
 
@@ -163,7 +153,7 @@ static uint32_t parse_statement_list(TokenSlice tokens, Array<ASTNode, MAX_AST_S
         return 0;
     }
 
-    compile_assert(tokens[0].type == '{', "Expected '{'", tokens[0].line);
+    parse_assert(tokens[0].type == '{', "Expected '{'", tokens[0]);
 
     *node = &ast->push(ASTNode{ASTNodeType::StatementList});    
 
@@ -174,7 +164,7 @@ static uint32_t parse_statement_list(TokenSlice tokens, Array<ASTNode, MAX_AST_S
     while (token_idx < tokens.length && tokens[token_idx].type != '}') {
         ASTNode* next_node;
         uint32_t parse_length = parse_statement(tokens.from(token_idx), ast, &next_node);
-        compile_assert(parse_length, "Invalid statement", tokens[token_idx].line);
+        parse_assert(parse_length, "Invalid statement", tokens[token_idx]);
 
         set_next(last_node, next_node);
         ++(*node)->children;
@@ -192,7 +182,7 @@ static uint32_t parse_def(TokenSlice tokens, Array<ASTNode, MAX_AST_SIZE>* ast, 
     }
 
     // this one is an actual assert - parse_def has to be called this way!
-    assert(tokens[0].type == TokenType::Identifier);
+    assert(tokens[0].type == TokenType::Name);
 
     if (tokens[1].type != ':') {
         return 0;
@@ -201,7 +191,7 @@ static uint32_t parse_def(TokenSlice tokens, Array<ASTNode, MAX_AST_SIZE>* ast, 
     // figure out which type of def:
     if (tokens[2].type == '(') {
         // this is a function def
-        compile_assert(tokens[3].type == ')', "Invalid parameter list", tokens[3].line);
+        parse_assert(tokens[3].type == ')', "Invalid parameter list", tokens[3]);
 
         *node = &ast->push(ASTNode{ASTNodeType::FunctionDef});
         (*node)->children = 2;
@@ -209,7 +199,7 @@ static uint32_t parse_def(TokenSlice tokens, Array<ASTNode, MAX_AST_SIZE>* ast, 
         (*node)->next = &ast->push(ASTNode{ASTNodeType::ParameterList});
 
         uint32_t parsed_length = parse_statement_list(tokens.from(4), ast, &(*node)->next->next);
-        compile_assert(parsed_length, "Invalid function body", tokens[3].line);
+        parse_assert(parsed_length, "Invalid function body", tokens[3]);
 
         return 4 + parsed_length;
     }
@@ -219,7 +209,7 @@ static uint32_t parse_def(TokenSlice tokens, Array<ASTNode, MAX_AST_SIZE>* ast, 
         (*node)->children = 1;
 
         uint32_t parsed_length = 1 + parse_expression(tokens.from(3), ast, 1, &(*node)->next);
-        compile_assert(parsed_length, "Invalid expression on rhs of variable definition", tokens[2].line);
+        parse_assert(parsed_length, "Invalid expression on rhs of variable definition", tokens[2]);
 
         return 3 + parsed_length;
     }
@@ -260,15 +250,15 @@ Array<ASTNode, MAX_AST_SIZE>* parse(const std::vector<Token>& tokens) {
     while (token_idx < token_slice.length) {
         // top level expressions
         switch (token_slice[token_idx].type) {
-            case TokenType::Identifier: {
+            case TokenType::Name: {
                 ASTNode* node;
                 uint32_t parsed_length = parse_def(token_slice.from(token_idx), ast, &node);
-                compile_assert(parsed_length != 0, "Invalid definition", token_slice[token_idx].line);
+                parse_assert(parsed_length != 0, "Invalid definition", token_slice[token_idx]);
 
                 token_idx += parsed_length;
             } break;
             default:
-                compile_fail("Invalid top-level statement", token_slice[token_idx].line);
+                parse_fail("Invalid top-level statement", token_slice[token_idx]);
         }
     }
 

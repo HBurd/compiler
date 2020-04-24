@@ -1,6 +1,6 @@
 CPPFLAGS = -MMD -Wall -Wextra -g
 CXXFLAGS = -std=c++11
-objects = compiler.o lexer.o parser.o
+objects = compiler.o lexer.o parser.o report_error.o
 
 CXX = clang++
 
