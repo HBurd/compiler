@@ -37,7 +37,6 @@ struct ASTNode {
     union {
         char op;        // for operator
         uint64_t value; // for number
-        //SubString name; // for identifier
         uint32_t symbol_id;
         Array<SymbolData, MAX_SYMBOLS>* symbols;
     };
