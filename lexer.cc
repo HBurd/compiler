@@ -3,7 +3,41 @@
 #include <cstring>
 #include <cassert>
 
+#include <iostream>
+
 const size_t IDENTIFIER_BUF_SIZE = 64;
+
+void SubString::print()
+{
+    for (uint32_t i = 0; i < len; ++i)
+    {
+        std::cout << start[i];
+    }
+    std::cout << std::endl;
+}
+
+bool SubString::operator==(const SubString& rhs)
+{
+    if (rhs.len != len) return false;
+    for (uint32_t i = 0; i < len; ++i)
+    {
+        if (rhs.start[i] != start[i]) return false;
+    }
+    return true;
+}
+
+static uint64_t string_to_unsigned(const char* start, uint32_t len)
+{
+    uint64_t result = 0;
+    for (uint32_t i = 0; i < len; ++i)
+    {
+        result *= 10;
+        assert(start[i] >= '0' && start[i] <= '9');
+        uint8_t digit = start[i] - '0';
+        result += digit;
+    }
+    return result;
+}
 
 static bool is_number(char c)
 {
@@ -86,13 +120,14 @@ void lex(const char* file, std::vector<Token>& tokens)
                     ++position;
                 }
 
-                compile_assert_with_marker(valid_terminator(file[position]), "Invalid character terminating token", line, line_start - position, 1);
+                compile_assert_with_marker(valid_terminator(file[position]), "Invalid character terminating token", line, identifier_start - line_start, 1);
 
                 Token new_token;
                 new_token.type = TokenType::Number,
                 new_token.line = line,
                 new_token.column = identifier_start - line_start,
                 new_token.len = position - identifier_start,
+                new_token.number_value = string_to_unsigned(file + identifier_start, new_token.len);
 
                 tokens.push_back(new_token);
             }
@@ -104,7 +139,7 @@ void lex(const char* file, std::vector<Token>& tokens)
                     ++position;
                 }
                 
-                compile_assert_with_marker(valid_terminator(file[position]), "Invalid character terminating token", line, line_start - position, 1);
+                compile_assert_with_marker(valid_terminator(file[position]), "Invalid character terminating token", line, identifier_start - line_start, 1);
 
                 char identifier_buf[IDENTIFIER_BUF_SIZE] = {};
                 uint32_t identifier_length = position - identifier_start;
@@ -115,6 +150,8 @@ void lex(const char* file, std::vector<Token>& tokens)
                 new_token.line = line;
                 new_token.column = identifier_start - line_start;
                 new_token.len = position - identifier_start;
+                new_token.name.start = file + identifier_start;
+                new_token.name.len = position - identifier_start;
                 
                 tokens.push_back(new_token);
             }
