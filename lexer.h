@@ -5,8 +5,8 @@
 
 struct SubString
 {
-    const char* start;
-    uint32_t len;
+    const char* start = nullptr;
+    uint32_t len = 0;
 
     void print();
     bool operator==(const SubString& rhs);
@@ -33,6 +33,12 @@ struct Token
     uint32_t line = 0;
     uint32_t column = 0;
     uint32_t len = 0;
+
+    Token()
+    {
+        // hack to un-delete default token constructor
+        name = SubString();
+    }
 
     union
     {

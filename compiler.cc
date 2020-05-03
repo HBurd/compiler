@@ -1,9 +1,11 @@
 #include <fstream>
 #include <cassert>
 
+#include "report_error.h"
+
 #include "lexer.h"
 #include "parser.h"
-#include "report_error.h"
+#include "codegen_llvm.h"
 
 int main(int argc, char **argv)
 {
@@ -27,5 +29,9 @@ int main(int argc, char **argv)
     lex(file_contents, tokens);
 
     // generate parse tree
-    parse(tokens);
+    auto symbols = new Array<SymbolData, MAX_SYMBOLS>;
+    auto ast = new Array<ASTNode, MAX_AST_SIZE>;
+    parse(tokens, ast, symbols);
+
+    output_ast(ast, symbols);
 }

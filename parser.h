@@ -31,8 +31,8 @@ struct SymbolData
 
 struct ASTNode { 
     uint32_t type = ASTNodeType::Invalid;
-    uint32_t children = 0;
-    ASTNode* next = nullptr; // next child
+    ASTNode* child = nullptr;
+    ASTNode* sibling = nullptr; // next child
 
     union {
         char op;        // for operator
@@ -49,4 +49,4 @@ struct ASTNode {
 constexpr uint32_t MAX_AST_SIZE = 65536;
 
 // returns a new'd pointer
-Array<ASTNode, MAX_AST_SIZE>* parse(const std::vector<Token>& tokens);
+void parse(const std::vector<Token>& tokens, Array<ASTNode, MAX_AST_SIZE>* ast, Array<SymbolData, MAX_SYMBOLS>* symbols);

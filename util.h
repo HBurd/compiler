@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cassert>
+#include <stdint.h>
 
 template <typename T, uint32_t max_size>
 struct Array
