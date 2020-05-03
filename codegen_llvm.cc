@@ -19,11 +19,19 @@ static StringRef make_twine(SubString substr)
     return StringRef(substr.start, substr.len);
 }
 
+struct SymbolTable
+{
+    Array<SymbolData, MAX_SYMBOLS>* symbol_data;
+    Value** values;
+};
+
 struct CodeEmitter
 {
     LLVMContext llvm_ctxt;
     IRBuilder<> ir_builder;
     Module* module;
+
+    static constexpr uint32_t ANONYMOUS_VALUE = 0xFFFFFFFF;
 
     CodeEmitter()
     :ir_builder(llvm_ctxt)
@@ -36,13 +44,19 @@ struct CodeEmitter
         delete module;
     }
 
-    Value* emit_binop(ASTNode* subexpr, SubString value_name)
+    Value* emit_binop(ASTNode* subexpr, uint32_t symbol_id, SymbolTable symbols)
     {
         ASTNode* operand = subexpr->child;
-        Value* lhs = emit_subexpr(operand, SubString());
+        Value* lhs = emit_subexpr(operand, ANONYMOUS_VALUE, symbols);
 
         operand = operand->sibling;
-        Value* rhs = emit_subexpr(operand, SubString());
+        Value* rhs = emit_subexpr(operand, ANONYMOUS_VALUE, symbols);
+
+        SubString value_name;
+        if (symbol_id != ANONYMOUS_VALUE)
+        {
+            value_name = symbols.symbol_data->data[symbol_id].name;
+        }
 
         switch (subexpr->op)
         {
@@ -58,38 +72,46 @@ struct CodeEmitter
         return nullptr;
     }
 
-    Value* emit_subexpr(ASTNode* subexpr, SubString value_name)
+    Value* emit_subexpr(ASTNode* subexpr, uint32_t symbol_id, SymbolTable symbols)
     {
+        Value* result;
         switch (subexpr->type)
         {
             case ASTNodeType::Identifier:
-                return ConstantInt::get(IntegerType::get(llvm_ctxt, 32), 420);
+                result = symbols.values[subexpr->symbol_id];
+                break;
             case ASTNodeType::Number:
-                return ConstantInt::get(IntegerType::get(llvm_ctxt, 32), subexpr->value);
+                result = ConstantInt::get(IntegerType::get(llvm_ctxt, 32), subexpr->value);
+                break;
             case ASTNodeType::BinaryOperator:
-                return emit_binop(subexpr, value_name);
+                result = emit_binop(subexpr, symbol_id, symbols);
+                break;
             default:
                 assert(false && "Invalid syntax tree - expected a subexpression");
         }
-        return nullptr;
+
+        if (symbol_id != ANONYMOUS_VALUE)
+        {
+            symbols.values[symbol_id] = result;
+        }
+        return result;
     }
 
-    void emit_statement(ASTNode* statement, Array<SymbolData, MAX_SYMBOLS>* symbols)
+    void emit_statement(ASTNode* statement, SymbolTable symbols)
     {
         switch (statement->type)
         {
             case ASTNodeType::VariableDef:
             case ASTNodeType::Assignment:
             {
-                SubString name = symbols->data[statement->symbol_id].name;
-                emit_subexpr(statement->child, name);
+                emit_subexpr(statement->child, statement->symbol_id, symbols);
             } break;
             case ASTNodeType::FunctionDef:
                 // do nothing
                 break;
             case ASTNodeType::Return:
             {
-                Value* ret_value = emit_subexpr(statement->child, SubString());
+                Value* ret_value = emit_subexpr(statement->child, ANONYMOUS_VALUE, symbols);
                 ir_builder.CreateRet(ret_value);
             } break;
             default:
@@ -97,7 +119,7 @@ struct CodeEmitter
         }
     }
 
-    void generate_function_def(ASTNode* function_def_node, Array<SymbolData, MAX_SYMBOLS>* symbols)
+    void generate_function_def(ASTNode* function_def_node, SymbolTable symbols)
     {
         assert(function_def_node->child && function_def_node->child->type == ASTNodeType::ParameterList);
 
@@ -106,7 +128,7 @@ struct CodeEmitter
         Function* function = Function::Create(
             function_type,
             Function::ExternalLinkage,
-            make_twine(symbols->data[function_def_node->symbol_id].name),
+            make_twine(symbols.symbol_data->data[function_def_node->symbol_id].name),
             module
         );
 
@@ -118,11 +140,17 @@ struct CodeEmitter
 
         ASTNode* statement = statement_list->child;
 
+        SymbolTable statement_list_symbols;
+        statement_list_symbols.symbol_data = statement_list->symbols;
+        statement_list_symbols.values = new Value*[statement_list->symbols->size];
+
         while(statement)
         {
-            emit_statement(statement, statement_list->symbols);
+            emit_statement(statement, statement_list_symbols);
             statement = statement->sibling;
         }
+
+        delete[] statement_list_symbols.values;
     }
 };
 
@@ -130,13 +158,17 @@ void output_ast(Array<ASTNode, MAX_AST_SIZE>* ast, Array<SymbolData, MAX_SYMBOLS
 {
     CodeEmitter emitter;
 
+    SymbolTable symbol_table;
+    symbol_table.symbol_data = symbols;
+    symbol_table.values = new Value*[symbols->size];
+
     ASTNode* node = &ast->data[0];
     while (node)
     {
         switch (node->type)
         {
             case ASTNodeType::FunctionDef:
-                emitter.generate_function_def(node, symbols);
+                emitter.generate_function_def(node, symbol_table);
                 break;
             default:
                 assert(false);  // unsupported
@@ -144,6 +176,8 @@ void output_ast(Array<ASTNode, MAX_AST_SIZE>* ast, Array<SymbolData, MAX_SYMBOLS
 
         node = node->sibling;
     }
+
+    delete[] symbol_table.values;
     
     emitter.module->print(errs(), nullptr);
 }
