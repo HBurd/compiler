@@ -13,7 +13,6 @@ void SubString::print()
     {
         std::cout << start[i];
     }
-    std::cout << std::endl;
 }
 
 bool SubString::operator==(const SubString& rhs)

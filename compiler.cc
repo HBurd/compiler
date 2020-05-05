@@ -3,6 +3,8 @@
 
 #include "report_error.h"
 
+#include <iostream>
+
 #include "lexer.h"
 #include "parser.h"
 #include "codegen_llvm.h"
@@ -28,9 +30,13 @@ int main(int argc, char **argv)
     std::vector<Token> tokens;
     lex(file_contents, tokens);
 
-    // generate parse tree
-    auto symbols = new Array<SymbolData, MAX_SYMBOLS>;
-    auto ast = new Array<ASTNode, MAX_AST_SIZE>;
+    // generate AST
+    AST ast;
+
+    Array<SymbolData> symbols;
+    symbols.max_length = MAX_SYMBOLS;
+    symbols.data = new SymbolData[MAX_SYMBOLS];
+
     parse(tokens, ast, symbols);
 
     output_ast(ast, symbols);

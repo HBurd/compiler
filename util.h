@@ -3,23 +3,26 @@
 #include <cassert>
 #include <stdint.h>
 
-template <typename T, uint32_t max_size>
-struct Array
+template <typename T, uint32_t MAX_LEN>
+struct StaticArray
 {
-    uint32_t size = 0;
-    T data[max_size];
-    T& push(T element)
+    uint32_t length = 0;
+    T data[MAX_LEN];
+
+    static const uint32_t max_length = MAX_LEN;
+
+    T* push(T element)
     {
-        assert(size < max_size);
-        data[size++] = element;
+        assert(length < max_length);
+        data[length++] = element;
         
         return back();
     }
 
     T pop()
     {
-        assert(size);
-        return data[--size];
+        assert(length);
+        return data[--length];
     }
 
     T& operator[](uint32_t idx)
@@ -27,14 +30,52 @@ struct Array
         return data[idx];
     }
 
-    const T& operator[](uint32_t idx) const
+    const T* operator[](uint32_t idx) const
+    {
+        return &data[idx];
+    }
+
+    T* back()
+    {
+        assert(length);
+        return &data[length - 1];
+    }
+};
+
+template <typename T>
+struct Array
+{
+    uint32_t length = 0;
+    uint32_t max_length = 0;
+    T *data;
+
+    T* push(T element)
+    {
+        assert(length < max_length);
+        data[length++] = element;
+        
+        return back();
+    }
+
+    T pop()
+    {
+        assert(length);
+        return data[--length];
+    }
+
+    T& operator[](uint32_t idx)
     {
         return data[idx];
     }
 
-    T& back()
+    const T* operator[](uint32_t idx) const
     {
-        assert(size);
-        return data[size - 1];
+        return &data[idx];
+    }
+
+    T* back()
+    {
+        assert(length);
+        return &data[length - 1];
     }
 };

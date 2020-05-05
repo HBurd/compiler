@@ -21,7 +21,7 @@ static StringRef make_twine(SubString substr)
 
 struct SymbolTable
 {
-    Array<SymbolData, MAX_SYMBOLS>* symbol_data;
+    Array<SymbolData> symbol_data;
     Value** values;
 };
 
@@ -44,18 +44,16 @@ struct CodeEmitter
         delete module;
     }
 
-    Value* emit_binop(ASTNode* subexpr, uint32_t symbol_id, SymbolTable symbols)
+    Value* emit_binop(ASTBinOpNode* subexpr, uint32_t symbol_id, SymbolTable symbols)
     {
         ASTNode* operand = subexpr->child;
         Value* lhs = emit_subexpr(operand, ANONYMOUS_VALUE, symbols);
-
-        operand = operand->sibling;
-        Value* rhs = emit_subexpr(operand, ANONYMOUS_VALUE, symbols);
+        Value* rhs = emit_subexpr(operand->sibling, ANONYMOUS_VALUE, symbols);
 
         SubString value_name;
         if (symbol_id != ANONYMOUS_VALUE)
         {
-            value_name = symbols.symbol_data->data[symbol_id].name;
+            value_name = symbols.symbol_data[symbol_id].name;
         }
 
         switch (subexpr->op)
@@ -78,13 +76,13 @@ struct CodeEmitter
         switch (subexpr->type)
         {
             case ASTNodeType::Identifier:
-                result = symbols.values[subexpr->symbol_id];
+                result = symbols.values[static_cast<ASTIdentifierNode*>(subexpr)->symbol_id];
                 break;
             case ASTNodeType::Number:
-                result = ConstantInt::get(IntegerType::get(llvm_ctxt, 32), subexpr->value);
+                result = ConstantInt::get(IntegerType::get(llvm_ctxt, 32), static_cast<ASTNumberNode*>(subexpr)->value);
                 break;
             case ASTNodeType::BinaryOperator:
-                result = emit_binop(subexpr, symbol_id, symbols);
+                result = emit_binop(static_cast<ASTBinOpNode*>(subexpr), symbol_id, symbols);
                 break;
             default:
                 assert(false && "Invalid syntax tree - expected a subexpression");
@@ -104,7 +102,7 @@ struct CodeEmitter
             case ASTNodeType::VariableDef:
             case ASTNodeType::Assignment:
             {
-                emit_subexpr(statement->child, statement->symbol_id, symbols);
+                emit_subexpr(statement->child, static_cast<ASTIdentifierNode*>(statement)->symbol_id, symbols);
             } break;
             case ASTNodeType::FunctionDef:
                 // do nothing
@@ -128,11 +126,11 @@ struct CodeEmitter
         Function* function = Function::Create(
             function_type,
             Function::ExternalLinkage,
-            make_twine(symbols.symbol_data->data[function_def_node->symbol_id].name),
+            make_twine(symbols.symbol_data[static_cast<ASTIdentifierNode*>(function_def_node)->symbol_id].name),
             module
         );
 
-        ASTNode* statement_list = function_def_node->child->sibling;
+        ASTStatementListNode* statement_list = static_cast<ASTStatementListNode*>(function_def_node->child->sibling);
         assert(statement_list && statement_list->type == ASTNodeType::StatementList);
 
         BasicBlock* entry = BasicBlock::Create(llvm_ctxt, "entry", function);
@@ -142,7 +140,7 @@ struct CodeEmitter
 
         SymbolTable statement_list_symbols;
         statement_list_symbols.symbol_data = statement_list->symbols;
-        statement_list_symbols.values = new Value*[statement_list->symbols->size];
+        statement_list_symbols.values = new Value*[statement_list->symbols.length];
 
         while(statement)
         {
@@ -154,15 +152,15 @@ struct CodeEmitter
     }
 };
 
-void output_ast(Array<ASTNode, MAX_AST_SIZE>* ast, Array<SymbolData, MAX_SYMBOLS>* symbols)
+void output_ast(AST& ast, Array<SymbolData> symbols)
 {
     CodeEmitter emitter;
 
     SymbolTable symbol_table;
     symbol_table.symbol_data = symbols;
-    symbol_table.values = new Value*[symbols->size];
+    symbol_table.values = new Value*[symbols.length];
 
-    ASTNode* node = &ast->data[0];
+    ASTNode* node = ast.start;
     while (node)
     {
         switch (node->type)

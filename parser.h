@@ -29,24 +29,66 @@ struct SymbolData
     SubString name;
 };
 
-struct ASTNode { 
+struct ASTNode
+{
     uint32_t type = ASTNodeType::Invalid;
     ASTNode* child = nullptr;
     ASTNode* sibling = nullptr; // next child
 
-    union {
-        char op;        // for operator
-        uint64_t value; // for number
-        uint32_t symbol_id;
-        Array<SymbolData, MAX_SYMBOLS>* symbols;
-    };
-
     ASTNode() = default;
-    ASTNode(uint32_t type_): type(type_){}
+    ASTNode(uint32_t type_): type(type_) {}
 };
 
-// no special thought went into picking these
-constexpr uint32_t MAX_AST_SIZE = 65536;
+struct ASTBinOpNode : public ASTNode
+{
+    char op;
 
-// returns a new'd pointer
-void parse(const std::vector<Token>& tokens, Array<ASTNode, MAX_AST_SIZE>* ast, Array<SymbolData, MAX_SYMBOLS>* symbols);
+    ASTBinOpNode(char op_)
+        :ASTNode(ASTNodeType::BinaryOperator),
+        op(op_)
+    {}
+};
+
+struct ASTNumberNode: public ASTNode
+{
+    uint64_t value;
+
+    ASTNumberNode(uint64_t value_)
+        :ASTNode(ASTNodeType::Number),
+        value(value_)
+    {}
+};
+
+struct ASTIdentifierNode: public ASTNode
+{
+    uint32_t symbol_id;
+
+    ASTIdentifierNode(uint32_t type, uint32_t symbol_id_)
+        :ASTNode(type),
+        symbol_id(symbol_id_)
+    {}
+};
+
+struct ASTStatementListNode: public ASTNode
+{
+    Array<SymbolData> symbols;
+
+    ASTStatementListNode(Array<SymbolData> symbols_)
+        :ASTNode(ASTNodeType::StatementList),
+        symbols(symbols_)
+    {}
+};
+
+struct AST
+{
+    static const uint32_t MAX_SIZE = 65536;
+
+    uint32_t next = 0;
+    ASTNode* start;
+    uint8_t data[MAX_SIZE];
+
+    ASTNode* push(ASTNode* type);
+};
+
+void parse(const std::vector<Token>& tokens, AST& ast, Array<SymbolData>& symbols);
+
