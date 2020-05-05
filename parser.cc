@@ -286,8 +286,6 @@ static uint32_t parse_def(TokenSlice tokens, AST& ast, Array<SymbolData>& symbol
         ASTIdentifierNode new_node(ASTNodeType::VariableDef, new_symbol_id);
         *node = ast.push(&new_node);
 
-        std::cout << static_cast<ASTIdentifierNode*>(*node)->symbol_id << std::endl;
-
         uint32_t parsed_length = 1 + parse_expression(tokens.from(3), ast, symbols, 1, &(*node)->child);
 
         return 3 + parsed_length;
