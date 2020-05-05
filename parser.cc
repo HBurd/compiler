@@ -53,6 +53,7 @@ ASTNode* AST::push(ASTNode* node)
             align = alignof(ASTBinOpNode);
             size = sizeof(ASTBinOpNode);
             break;
+        case ASTNodeType::FunctionDef:
         case ASTNodeType::VariableDef:
         case ASTNodeType::Assignment:
         case ASTNodeType::Identifier:
@@ -75,7 +76,7 @@ ASTNode* AST::push(ASTNode* node)
     bool set_start = (next == 0);
 
     // Get alignment right
-    next += (align - (next % align));
+    next += (align - (next % align)) % align;
     ASTNode* result = (ASTNode*)(data + next);
 
     if (set_start) start = result;
