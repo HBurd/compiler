@@ -55,6 +55,7 @@ static bool is_single_char_token(char c)
            (c == '*') ||
            (c == '=') ||
            (c == ':') ||
+           (c == ',') ||
            (c == ';');
 }
 

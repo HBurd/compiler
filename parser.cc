@@ -18,6 +18,7 @@ const char* AST_NODE_TYPE_NAME[] = {
     [ASTNodeType::Identifier] = "Identifier",
     [ASTNodeType::Number] = "Number",
     [ASTNodeType::BinaryOperator] = "BinaryOperator",
+    [ASTNodeType::FunctionParameter] = "FunctionParameter",
 };
 
 uint8_t OPERATOR_PRECEDENCE[] = {
@@ -31,7 +32,7 @@ struct TokenReader {
     uint32_t length = 0;
     uint32_t position = 0;
 
-    Token peek(int32_t index)
+    Token peek(int32_t index = 0)
     {
         if ((int32_t)position + index >= (int32_t)length)
         {
@@ -41,7 +42,7 @@ struct TokenReader {
         return data[position + index];
     }
 
-    void advance(uint32_t amount)
+    void advance(uint32_t amount = 1)
     {
         assert(position + amount <= length);
         position += amount;
@@ -64,6 +65,7 @@ ASTNode* AST::push_orphan(const ASTNode& node)
             size = sizeof(ASTBinOpNode);
             break;
         case ASTNodeType::FunctionDef:
+        case ASTNodeType::FunctionParameter:
         case ASTNodeType::VariableDef:
         case ASTNodeType::Assignment:
         case ASTNodeType::Identifier:
@@ -135,20 +137,20 @@ static void parse_def(TokenReader& tokens, AST& ast, Array<SymbolData>& symbols)
 // We stick expressions on the AST in RPN to make left to right precedence easier
 static void parse_expression(TokenReader& tokens, AST& ast, Array<SymbolData>& symbols, uint8_t precedence, ASTNode** expr) {
 
-    if (tokens.peek(0).type == '(') {
-        tokens.advance(1);
+    if (tokens.peek().type == '(') {
+        tokens.advance();
 
         ASTNode* subexpr = nullptr;
         parse_expression(tokens, ast, symbols, 1, &subexpr);
 
-        assert_at_token(tokens.peek(0).type == ')', "Missing ')'", tokens.peek(0));
+        assert_at_token(tokens.peek().type == ')', "Missing ')'", tokens.peek());
 
-        assert_at_token(subexpr, "Empty subexpression", tokens.peek(0));
+        assert_at_token(subexpr, "Empty subexpression", tokens.peek());
         *expr = subexpr;
 
-        tokens.advance(1);      // move past ')'
+        tokens.advance();      // move past ')'
     }
-    else if (tokens.peek(0).type == TokenType::Name || tokens.peek(0).type == TokenType::Number) {
+    else if (tokens.peek().type == TokenType::Name || tokens.peek().type == TokenType::Number) {
         // recurse until precedence matches that of the next operator
         if (OPERATOR_PRECEDENCE[tokens.peek(1).type] >= precedence) {
             // this sticks the subexpr of higher precedence onto the AST
@@ -156,11 +158,11 @@ static void parse_expression(TokenReader& tokens, AST& ast, Array<SymbolData>& s
 
             // now token_idx is after a precedence + 1 subexpression
 
-            assert(OPERATOR_PRECEDENCE[tokens.peek(0).type] <= precedence);
+            assert(OPERATOR_PRECEDENCE[tokens.peek().type] <= precedence);
 
-            while (OPERATOR_PRECEDENCE[tokens.peek(0).type] == precedence) {
-                uint32_t op = tokens.peek(0).type;
-                tokens.advance(1);
+            while (OPERATOR_PRECEDENCE[tokens.peek().type] == precedence) {
+                uint32_t op = tokens.peek().type;
+                tokens.advance();
 
                 // now recurse so that the right expression is on the AST
                 ASTNode* right_subexpr;
@@ -174,37 +176,37 @@ static void parse_expression(TokenReader& tokens, AST& ast, Array<SymbolData>& s
             }
         }
         else {
-            switch (tokens.peek(0).type)
+            switch (tokens.peek().type)
             {
                 case TokenType::Name:
                     uint32_t symbol_id;
-                    assert_at_token(lookup_symbol(symbols, tokens.peek(0).name, &symbol_id), "Unknown identifier", tokens.peek(0));
+                    assert_at_token(lookup_symbol(symbols, tokens.peek().name, &symbol_id), "Unknown identifier", tokens.peek());
 
                     *expr = ast.push_orphan(ASTIdentifierNode(ASTNodeType::Identifier, symbol_id));
                     break;
                 case TokenType::Number:
-                    *expr = ast.push_orphan(ASTNumberNode(tokens.peek(0).number_value));
+                    *expr = ast.push_orphan(ASTNumberNode(tokens.peek().number_value));
                     break;
                 default:
                     assert(false);
             }
-            tokens.advance(1);
+            tokens.advance();
         }
     }
     else {
-        fail_at_token("Invalid expression", tokens.peek(0));
+        fail_at_token("Invalid expression", tokens.peek());
     }
 
     assert_at_token(
-        OPERATOR_PRECEDENCE[tokens.peek(0).type] || tokens.peek(0).type == ';' || tokens.peek(0).type == ')',
+        OPERATOR_PRECEDENCE[tokens.peek().type] || tokens.peek().type == ';' || tokens.peek().type == ')',
         "Unknown token terminating expression",
-        tokens.peek(0));
+        tokens.peek());
 
-    assert(OPERATOR_PRECEDENCE[tokens.peek(0).type] < precedence);
+    assert(OPERATOR_PRECEDENCE[tokens.peek().type] < precedence);
 }
 
 static void parse_statement(TokenReader& tokens, AST& ast, Array<SymbolData>& symbols) {
-    if (tokens.peek(0).type == TokenType::Name) {
+    if (tokens.peek().type == TokenType::Name) {
         if (tokens.peek(1).type == ':') {
             // Parse declaration
             parse_def(tokens, ast, symbols);
@@ -212,84 +214,119 @@ static void parse_statement(TokenReader& tokens, AST& ast, Array<SymbolData>& sy
         else if (tokens.peek(1).type == '=') {
             // Parse assignment
             uint32_t symbol_id;
-            bool found_symbol = lookup_symbol(symbols, tokens.peek(0).name, &symbol_id);
-            assert_at_token(found_symbol, "Unknown symbol", tokens.peek(0));
+            bool found_symbol = lookup_symbol(symbols, tokens.peek().name, &symbol_id);
+            assert_at_token(found_symbol, "Unknown symbol", tokens.peek());
 
             ASTNode* assign_node = ast.push(ASTIdentifierNode(ASTNodeType::Assignment, symbol_id));
 
             tokens.advance(2);
 
             parse_expression(tokens, ast, symbols, 1, &assign_node->child);
-            assert_at_token(tokens.peek(0).type == ';', "Expected ';'", tokens.peek(0));
+            assert_at_token(tokens.peek().type == ';', "Expected ';'", tokens.peek());
 
-            tokens.advance(1);  // advance past semicolon
+            tokens.advance();  // advance past semicolon
         }
     }
-    else if (tokens.peek(0).type == TokenType::Return) {
+    else if (tokens.peek().type == TokenType::Return) {
         ASTNode* return_node = ast.push(ASTNode(ASTNodeType::Return)); // TODO: can only return an expression right now
-        tokens.advance(1);
+        tokens.advance();
         parse_expression(tokens, ast, symbols, 1, &return_node->child);
-        assert_at_token(tokens.peek(0).type == ';', "Expected ';'", tokens.peek(0));
+        assert_at_token(tokens.peek().type == ';', "Expected ';'", tokens.peek());
 
-        tokens.advance(1);  // advance past semicolon
+        tokens.advance();  // advance past semicolon
     }
     else {
-        fail_at_token("Invalid statement", tokens.peek(0));
+        fail_at_token("Invalid statement", tokens.peek());
     }
 }
 
+static void parse_parameter_list(TokenReader& tokens, AST& ast, Array<SymbolData>& symbols) {
+    assert_at_token(tokens.peek().type == '(', "Expected '('", tokens.peek());
+
+    tokens.advance();
+
+    ASTNode* parameter_list_node = ast.push(ASTNode(ASTNodeType::ParameterList));
+
+    ast.begin_children(parameter_list_node);
+
+    if (tokens.peek().type != ')')
+    {
+        assert_at_token(tokens.peek().type == TokenType::Name, "Expected an identifier", tokens.peek());
+        ast.push(ASTIdentifierNode(ASTNodeType::FunctionParameter, symbols.length));
+        SymbolData new_symbol;
+        new_symbol.name = tokens.peek().name;
+        symbols.push(new_symbol);
+
+        tokens.advance();
+
+        while(tokens.peek().type == ',')
+        {
+            tokens.advance();
+
+            assert_at_token(tokens.peek().type == TokenType::Name, "Expected an identifier", tokens.peek());
+            ast.push(ASTIdentifierNode(ASTNodeType::FunctionParameter, symbols.length));
+            new_symbol.name = tokens.peek().name;
+            symbols.push(new_symbol);
+
+            tokens.advance();
+        }
+    }
+
+    assert_at_token(tokens.peek().type == ')', "Expected ')'", tokens.peek());
+    tokens.advance();
+
+    ast.end_children(parameter_list_node);
+}
+
 static void parse_statement_list(TokenReader& tokens, AST& ast, Array<SymbolData>& symbols) {
-    assert_at_token(tokens.peek(0).type == '{', "Expected '{'", tokens.peek(0));
-    tokens.advance(1);
+    assert_at_token(tokens.peek().type == '{', "Expected '{'", tokens.peek());
+    tokens.advance();
 
     ASTNode* statement_list_node = ast.push(ASTStatementListNode(symbols));
 
     ast.begin_children(statement_list_node);
 
-    while (!tokens.eof() && tokens.peek(0).type != '}') {
+    while (!tokens.eof() && tokens.peek().type != '}') {
         parse_statement(tokens, ast, static_cast<ASTStatementListNode*>(statement_list_node)->symbols);
     }
 
     ast.end_children(statement_list_node);
 
     assert_at_token(!tokens.eof(), "Expected '}'", tokens.peek(-1));
-    tokens.advance(1);
+    tokens.advance();
 }
 
 static void parse_def(TokenReader& tokens, AST& ast, Array<SymbolData>& symbols) {
 
     assert_at_token(
-        tokens.peek(0).type == TokenType::Name && tokens.peek(1).type == ':',
+        tokens.peek().type == TokenType::Name && tokens.peek(1).type == ':',
         "Invalid definition",
-        tokens.peek(0));
+        tokens.peek());
 
     // check if an entry is already in the symbol table
-    assert_at_token(!lookup_symbol(symbols, tokens.peek(0).name, nullptr), "Symbol already declared", tokens.peek(0));
+    assert_at_token(!lookup_symbol(symbols, tokens.peek().name, nullptr), "Symbol already declared", tokens.peek());
 
     uint32_t new_symbol_id = symbols.length;
 
     SymbolData new_symbol;
-    new_symbol.name = tokens.peek(0).name;
+    new_symbol.name = tokens.peek().name;
     symbols.push(new_symbol);
 
     // figure out which type of def:
     if (tokens.peek(2).type == '(') {
         // this is a function def
-        assert_at_token(tokens.peek(3).type == ')', "Invalid parameter list", tokens.peek(3));
-
         ASTNode* function_identifier_node = ast.push(ASTIdentifierNode(ASTNodeType::FunctionDef, new_symbol_id));
 
         ast.begin_children(function_identifier_node);
-
-        ast.push(ASTNode(ASTNodeType::ParameterList));
 
         // Need to make the function's symbol table here so we can add the parameters to the scope
         Array<SymbolData> function_symbols;
         function_symbols.max_length = MAX_SYMBOLS;
         function_symbols.data = new SymbolData[MAX_SYMBOLS];
 
-        tokens.advance(4);
+        tokens.advance(2);
 
+        parse_parameter_list(tokens, ast, function_symbols);
         parse_statement_list(tokens, ast, function_symbols);
 
         ast.end_children(function_identifier_node);
@@ -302,10 +339,10 @@ static void parse_def(TokenReader& tokens, AST& ast, Array<SymbolData>& symbols)
 
         parse_expression(tokens, ast, symbols, 1, &variable_def_node->child);
 
-        tokens.advance(1);      // advance past semicolon
+        tokens.advance();      // advance past semicolon
     }
     else {
-        fail_at_token("Invalid definition", tokens.peek(0));
+        fail_at_token("Invalid definition", tokens.peek());
     }
 }
 
@@ -361,13 +398,13 @@ void parse(const std::vector<Token>& tokens, AST& ast, Array<SymbolData>& global
 
     while (!token_reader.eof()) {
         // top level expressions
-        switch (token_reader.peek(0).type) {
+        switch (token_reader.peek().type) {
             case TokenType::Name: {
                 parse_def(token_reader, ast, global_symbols);
 
             } break;
             default:
-                fail_at_token("Invalid top-level statement", token_reader.peek(0));
+                fail_at_token("Invalid top-level statement", token_reader.peek());
         }
     }
 

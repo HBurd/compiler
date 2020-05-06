@@ -10,6 +10,7 @@ namespace ASTNodeType {
         ParameterList,
         StatementList,
         VariableDef,
+        FunctionParameter,
         Assignment,
         Return,
         Identifier,
