@@ -43,11 +43,11 @@ struct TokenSlice {
     }
 };
 
-ASTNode* AST::push(ASTNode* node)
+ASTNode* AST::push_orphan(const ASTNode& node)
 {
     uint32_t align;
     uint32_t size;
-    switch (node->type)
+    switch (node.type)
     {
         case ASTNodeType::BinaryOperator:
             align = alignof(ASTBinOpNode);
@@ -73,19 +73,35 @@ ASTNode* AST::push(ASTNode* node)
             size = sizeof(ASTNode);
     }
 
-    bool set_start = (next == 0);
-
     // Get alignment right
     next += (align - (next % align)) % align;
     ASTNode* result = (ASTNode*)(data + next);
 
-    if (set_start) start = result;
-
     assert(next + size <= MAX_SIZE);
 
-    memcpy(result, node, size);
+    memcpy(result, &node, size);
     next += size;
+
     return result;
+}
+
+ASTNode* AST::push(const ASTNode& node)
+{
+    ASTNode* result = push_orphan(node);
+    *next_node_ref = result;
+    next_node_ref = &result->sibling;
+
+    return result;
+}
+
+void AST::begin_children(ASTNode* node)
+{
+    next_node_ref = &node->child;
+}
+
+void AST::end_children(ASTNode* node)
+{
+    next_node_ref = &node->sibling;
 }
 
 static bool lookup_symbol(Array<SymbolData>& symbol_table, SubString name, uint32_t* index) {
@@ -104,7 +120,7 @@ static bool lookup_symbol(Array<SymbolData>& symbol_table, SubString name, uint3
 // Functions for generating AST
 // ----------------------------
 
-static uint32_t parse_def(TokenSlice tokens, AST& ast, Array<SymbolData>& symbols, ASTNode** node);
+static uint32_t parse_def(TokenSlice tokens, AST& ast, Array<SymbolData>& symbols);
 
 // We stick expressions on the AST in RPN to make left to right precedence easier
 static uint32_t parse_expression(TokenSlice tokens, AST& ast, Array<SymbolData>& symbols, uint8_t precedence, ASTNode** expr) {
@@ -142,28 +158,23 @@ static uint32_t parse_expression(TokenSlice tokens, AST& ast, Array<SymbolData>&
 
                 (*expr)->sibling = right_subexpr;
 
-                ASTBinOpNode op_node(op);
-                op_node.child = *expr;
-
-                *expr = ast.push(&op_node);
+                ASTNode* op_node = ast.push_orphan(ASTBinOpNode(op));
+                op_node->child = *expr;
+                *expr = op_node;
             }
         }
         else {
             switch (tokens[0].type)
             {
                 case TokenType::Name:
-                {
                     uint32_t symbol_id;
                     assert_at_token(lookup_symbol(symbols, tokens[0].name, &symbol_id), "Unknown identifier", tokens[0]);
 
-                    ASTIdentifierNode new_node(ASTNodeType::Identifier, symbol_id);
-                    *expr = ast.push(&new_node);
-                } break;
+                    *expr = ast.push_orphan(ASTIdentifierNode(ASTNodeType::Identifier, symbol_id));
+                    break;
                 case TokenType::Number:
-                {
-                    ASTNumberNode new_node(tokens[0].number_value);
-                    *expr = ast.push(&new_node);
-                } break;
+                    *expr = ast.push_orphan(ASTNumberNode(tokens[0].number_value));
+                    break;
                 default:
                     assert(false);
             }
@@ -183,13 +194,13 @@ static uint32_t parse_expression(TokenSlice tokens, AST& ast, Array<SymbolData>&
     return token_idx;
 }
 
-static uint32_t parse_statement(TokenSlice tokens, AST& ast, Array<SymbolData>& symbols, ASTNode** node) {
+static uint32_t parse_statement(TokenSlice tokens, AST& ast, Array<SymbolData>& symbols) {
     assert_at_token(tokens.length >= 3, "Invalid statement", tokens[0]); // at least 2 tokens and a semicolon
 
     if (tokens[0].type == TokenType::Name) {
         if (tokens[1].type == ':') {
             // Parse declaration
-            uint32_t parse_length = parse_def(tokens, ast, symbols, node);
+            uint32_t parse_length = parse_def(tokens, ast, symbols);
             return parse_length;
         }
         else if (tokens[1].type == '=') {
@@ -198,17 +209,15 @@ static uint32_t parse_statement(TokenSlice tokens, AST& ast, Array<SymbolData>& 
             bool found_symbol = lookup_symbol(symbols, tokens[0].name, &symbol_id);
             assert_at_token(found_symbol, "Unknown symbol", tokens[0]);
 
-            ASTIdentifierNode new_node(ASTNodeType::Assignment, symbol_id);
-            *node = ast.push(&new_node);
+            ASTNode* assign_node = ast.push(ASTIdentifierNode(ASTNodeType::Assignment, symbol_id));
 
-            uint32_t parse_length = 1 + parse_expression(tokens.from(2), ast, symbols, 1, &(*node)->child);
+            uint32_t parse_length = 1 + parse_expression(tokens.from(2), ast, symbols, 1, &assign_node->child);
             return 2 + parse_length;
         }
     }
     else if (tokens[0].type == TokenType::Return) {
-        ASTNode new_node(ASTNodeType::Return);
-        *node = ast.push(&new_node); // TODO: can only return an expression right now
-        uint32_t parse_length = 1 + parse_expression(tokens.from(1), ast, symbols, 1, &(*node)->child);
+        ASTNode* return_node = ast.push(ASTNode(ASTNodeType::Return)); // TODO: can only return an expression right now
+        uint32_t parse_length = 1 + parse_expression(tokens.from(1), ast, symbols, 1, &return_node->child);
         return 1 + parse_length;
     }
 
@@ -217,36 +226,31 @@ static uint32_t parse_statement(TokenSlice tokens, AST& ast, Array<SymbolData>& 
     return 0;
 }
 
-static uint32_t parse_statement_list(TokenSlice tokens, AST& ast, Array<SymbolData>& symbols, ASTNode** node) {
+static uint32_t parse_statement_list(TokenSlice tokens, AST& ast, Array<SymbolData>& symbols) {
     assert_at_token(tokens.length >= 2, "Invalid statement list", tokens[0]); // shortest is {}
 
     assert_at_token(tokens[0].type == '{', "Expected '{'", tokens[0]);
 
-    ASTStatementListNode new_statement_list_node(symbols);
-    *node = ast.push(&new_statement_list_node);    
+    ASTNode* statement_list_node = ast.push(ASTStatementListNode(symbols));
 
-    ASTStatementListNode* statement_list_node = static_cast<ASTStatementListNode*>(*node);
-
-    ASTNode* last_node = *node;
+    ast.begin_children(statement_list_node);
 
     uint32_t token_idx = 1;
     while (token_idx < tokens.length && tokens[token_idx].type != '}') {
-        uint32_t parse_length = parse_statement(tokens.from(token_idx), ast, statement_list_node->symbols, &last_node->sibling);
+        uint32_t parse_length = parse_statement(tokens.from(token_idx), ast, static_cast<ASTStatementListNode*>(statement_list_node)->symbols);
 
         token_idx += parse_length;
-        last_node = last_node->sibling;
     }
 
-    // fix up the statement list node
-    statement_list_node->child = (*node)->sibling;
-    statement_list_node->sibling = nullptr;
+    ast.end_children(statement_list_node);
 
     return token_idx + 1;
 }
 
+// TODO: seems messy / unnecessary
 constexpr uint32_t MIN_DEF_LEN = 6; // identifier: () {}
 
-static uint32_t parse_def(TokenSlice tokens, AST& ast, Array<SymbolData>& symbols, ASTNode** node) {
+static uint32_t parse_def(TokenSlice tokens, AST& ast, Array<SymbolData>& symbols) {
 
     assert_at_token(
         tokens.length >= MIN_DEF_LEN && tokens[0].type == TokenType::Name && tokens[1].type == ':',
@@ -267,27 +271,28 @@ static uint32_t parse_def(TokenSlice tokens, AST& ast, Array<SymbolData>& symbol
         // this is a function def
         assert_at_token(tokens[3].type == ')', "Invalid parameter list", tokens[3]);
 
-        ASTIdentifierNode function_identifier_node(ASTNodeType::FunctionDef, new_symbol_id);
-        *node = ast.push(&function_identifier_node);
+        ASTNode* function_identifier_node = ast.push(ASTIdentifierNode(ASTNodeType::FunctionDef, new_symbol_id));
 
-        ASTNode parameter_list_node(ASTNodeType::ParameterList);
-        (*node)->child = ast.push(&parameter_list_node);
+        ast.begin_children(function_identifier_node);
+
+        ast.push(ASTNode(ASTNodeType::ParameterList));
 
         // Need to make the function's symbol table here so we can add the parameters to the scope
         Array<SymbolData> function_symbols;
         function_symbols.max_length = MAX_SYMBOLS;
         function_symbols.data = new SymbolData[MAX_SYMBOLS];
 
-        uint32_t parsed_length = parse_statement_list(tokens.from(4), ast, function_symbols, &(*node)->child->sibling);
+        uint32_t parsed_length = parse_statement_list(tokens.from(4), ast, function_symbols);
+
+        ast.end_children(function_identifier_node);
 
         return 4 + parsed_length;
     }
     else if (tokens[2].type == '=') {
         // this is a variable / constant def
-        ASTIdentifierNode new_node(ASTNodeType::VariableDef, new_symbol_id);
-        *node = ast.push(&new_node);
+        ASTNode* variable_def_node = ast.push(ASTIdentifierNode(ASTNodeType::VariableDef, new_symbol_id));
 
-        uint32_t parsed_length = 1 + parse_expression(tokens.from(3), ast, symbols, 1, &(*node)->child);
+        uint32_t parsed_length = 1 + parse_expression(tokens.from(3), ast, symbols, 1, &variable_def_node->child);
 
         return 3 + parsed_length;
     }
@@ -353,8 +358,7 @@ void parse(const std::vector<Token>& tokens, AST& ast, Array<SymbolData>& global
         // top level expressions
         switch (token_slice[token_idx].type) {
             case TokenType::Name: {
-                ASTNode* node;
-                uint32_t parsed_length = parse_def(token_slice.from(token_idx), ast, global_symbols, &node);
+                uint32_t parsed_length = parse_def(token_slice.from(token_idx), ast, global_symbols);
 
                 token_idx += parsed_length;
             } break;

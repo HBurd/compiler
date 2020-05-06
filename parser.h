@@ -84,10 +84,15 @@ struct AST
     static const uint32_t MAX_SIZE = 65536;
 
     uint32_t next = 0;
-    ASTNode* start;
+    ASTNode* start = nullptr;
+    ASTNode** next_node_ref = &start;
     uint8_t data[MAX_SIZE];
 
-    ASTNode* push(ASTNode* type);
+    ASTNode* push_orphan(const ASTNode& node);
+    ASTNode* push(const ASTNode& node);
+
+    void begin_children(ASTNode* node);
+    void end_children(ASTNode* node);
 };
 
 void parse(const std::vector<Token>& tokens, AST& ast, Array<SymbolData>& symbols);
