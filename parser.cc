@@ -289,10 +289,12 @@ static uint32_t parse_def(TokenSlice tokens, AST& ast, Array<SymbolData>& symbol
         return 4 + parsed_length;
     }
     else if (tokens[2].type == '=') {
-        // this is a variable / constant def
-        ASTNode* variable_def_node = ast.push(ASTIdentifierNode(ASTNodeType::VariableDef, new_symbol_id));
+        // this is a variable def and assignment - these are done separately (for now)
+        ast.push(ASTIdentifierNode(ASTNodeType::VariableDef, new_symbol_id));
 
-        uint32_t parsed_length = 1 + parse_expression(tokens.from(3), ast, symbols, 1, &variable_def_node->child);
+        ASTNode* assignment_node = ast.push(ASTIdentifierNode(ASTNodeType::Assignment, new_symbol_id));
+
+        uint32_t parsed_length = 1 + parse_expression(tokens.from(3), ast, symbols, 1, &assignment_node->child);
 
         return 3 + parsed_length;
     }
