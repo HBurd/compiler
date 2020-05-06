@@ -3,8 +3,10 @@
 #include "lexer.h"
 #include "util.h"
 
-namespace ASTNodeType {
-    enum {
+namespace ASTNodeType
+{
+    enum
+    {
         Invalid,
         FunctionDef,
         ParameterList,

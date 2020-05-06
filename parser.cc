@@ -116,10 +116,14 @@ void AST::end_children(ASTNode* node)
     next_node_ref = &node->sibling;
 }
 
-static bool lookup_symbol(Array<SymbolData>& symbol_table, SubString name, uint32_t* index) {
-    for (uint32_t i = 0; i < symbol_table.length; ++i) {
-        if (symbol_table[i].name == name) {
-            if (index) {
+static bool lookup_symbol(Array<SymbolData>& symbol_table, SubString name, uint32_t* index)
+{
+    for (uint32_t i = 0; i < symbol_table.length; ++i)
+{
+        if (symbol_table[i].name == name)
+{
+            if (index)
+{
                 *index = i;
             }
             return true;
@@ -135,9 +139,11 @@ static bool lookup_symbol(Array<SymbolData>& symbol_table, SubString name, uint3
 static void parse_def(TokenReader& tokens, AST& ast, Array<SymbolData>& symbols);
 
 // We stick expressions on the AST in RPN to make left to right precedence easier
-static void parse_expression(TokenReader& tokens, AST& ast, Array<SymbolData>& symbols, uint8_t precedence, ASTNode** expr) {
+static void parse_expression(TokenReader& tokens, AST& ast, Array<SymbolData>& symbols, uint8_t precedence, ASTNode** expr)
+{
 
-    if (tokens.peek().type == '(') {
+    if (tokens.peek().type == '(')
+    {
         tokens.advance();
 
         ASTNode* subexpr = nullptr;
@@ -150,9 +156,11 @@ static void parse_expression(TokenReader& tokens, AST& ast, Array<SymbolData>& s
 
         tokens.advance();      // move past ')'
     }
-    else if (tokens.peek().type == TokenType::Name || tokens.peek().type == TokenType::Number) {
+    else if (tokens.peek().type == TokenType::Name || tokens.peek().type == TokenType::Number)
+    {
         // recurse until precedence matches that of the next operator
-        if (OPERATOR_PRECEDENCE[tokens.peek(1).type] >= precedence) {
+        if (OPERATOR_PRECEDENCE[tokens.peek(1).type] >= precedence)
+        {
             // this sticks the subexpr of higher precedence onto the AST
             parse_expression(tokens, ast, symbols, precedence + 1, expr);
 
@@ -160,7 +168,8 @@ static void parse_expression(TokenReader& tokens, AST& ast, Array<SymbolData>& s
 
             assert(OPERATOR_PRECEDENCE[tokens.peek().type] <= precedence);
 
-            while (OPERATOR_PRECEDENCE[tokens.peek().type] == precedence) {
+            while (OPERATOR_PRECEDENCE[tokens.peek().type] == precedence)
+            {
                 uint32_t op = tokens.peek().type;
                 tokens.advance();
 
@@ -175,7 +184,8 @@ static void parse_expression(TokenReader& tokens, AST& ast, Array<SymbolData>& s
                 *expr = op_node;
             }
         }
-        else {
+        else
+        {
             switch (tokens.peek().type)
             {
                 case TokenType::Name:
@@ -193,7 +203,8 @@ static void parse_expression(TokenReader& tokens, AST& ast, Array<SymbolData>& s
             tokens.advance();
         }
     }
-    else {
+    else
+    {
         fail_at_token("Invalid expression", tokens.peek());
     }
 
@@ -205,13 +216,17 @@ static void parse_expression(TokenReader& tokens, AST& ast, Array<SymbolData>& s
     assert(OPERATOR_PRECEDENCE[tokens.peek().type] < precedence);
 }
 
-static void parse_statement(TokenReader& tokens, AST& ast, Array<SymbolData>& symbols) {
-    if (tokens.peek().type == TokenType::Name) {
-        if (tokens.peek(1).type == ':') {
+static void parse_statement(TokenReader& tokens, AST& ast, Array<SymbolData>& symbols)
+{
+    if (tokens.peek().type == TokenType::Name)
+    {
+        if (tokens.peek(1).type == ':')
+        {
             // Parse declaration
             parse_def(tokens, ast, symbols);
         }
-        else if (tokens.peek(1).type == '=') {
+        else if (tokens.peek(1).type == '=')
+        {
             // Parse assignment
             uint32_t symbol_id;
             bool found_symbol = lookup_symbol(symbols, tokens.peek().name, &symbol_id);
@@ -227,7 +242,8 @@ static void parse_statement(TokenReader& tokens, AST& ast, Array<SymbolData>& sy
             tokens.advance();  // advance past semicolon
         }
     }
-    else if (tokens.peek().type == TokenType::Return) {
+    else if (tokens.peek().type == TokenType::Return)
+    {
         ASTNode* return_node = ast.push(ASTNode(ASTNodeType::Return)); // TODO: can only return an expression right now
         tokens.advance();
         parse_expression(tokens, ast, symbols, 1, &return_node->child);
@@ -235,12 +251,14 @@ static void parse_statement(TokenReader& tokens, AST& ast, Array<SymbolData>& sy
 
         tokens.advance();  // advance past semicolon
     }
-    else {
+    else
+    {
         fail_at_token("Invalid statement", tokens.peek());
     }
 }
 
-static void parse_parameter_list(TokenReader& tokens, AST& ast, Array<SymbolData>& symbols) {
+static void parse_parameter_list(TokenReader& tokens, AST& ast, Array<SymbolData>& symbols)
+{
     assert_at_token(tokens.peek().type == '(', "Expected '('", tokens.peek());
 
     tokens.advance();
@@ -278,7 +296,8 @@ static void parse_parameter_list(TokenReader& tokens, AST& ast, Array<SymbolData
     ast.end_children(parameter_list_node);
 }
 
-static void parse_statement_list(TokenReader& tokens, AST& ast, Array<SymbolData>& symbols) {
+static void parse_statement_list(TokenReader& tokens, AST& ast, Array<SymbolData>& symbols)
+{
     assert_at_token(tokens.peek().type == '{', "Expected '{'", tokens.peek());
     tokens.advance();
 
@@ -286,7 +305,8 @@ static void parse_statement_list(TokenReader& tokens, AST& ast, Array<SymbolData
 
     ast.begin_children(statement_list_node);
 
-    while (!tokens.eof() && tokens.peek().type != '}') {
+    while (!tokens.eof() && tokens.peek().type != '}')
+    {
         parse_statement(tokens, ast, static_cast<ASTStatementListNode*>(statement_list_node)->symbols);
     }
 
@@ -296,7 +316,8 @@ static void parse_statement_list(TokenReader& tokens, AST& ast, Array<SymbolData
     tokens.advance();
 }
 
-static void parse_def(TokenReader& tokens, AST& ast, Array<SymbolData>& symbols) {
+static void parse_def(TokenReader& tokens, AST& ast, Array<SymbolData>& symbols)
+{
 
     assert_at_token(
         tokens.peek().type == TokenType::Name && tokens.peek(1).type == ':',
@@ -313,7 +334,8 @@ static void parse_def(TokenReader& tokens, AST& ast, Array<SymbolData>& symbols)
     symbols.push(new_symbol);
 
     // figure out which type of def:
-    if (tokens.peek(2).type == '(') {
+    if (tokens.peek(2).type == '(')
+    {
         // this is a function def
         ASTNode* function_identifier_node = ast.push(ASTIdentifierNode(ASTNodeType::FunctionDef, new_symbol_id));
 
@@ -331,7 +353,8 @@ static void parse_def(TokenReader& tokens, AST& ast, Array<SymbolData>& symbols)
 
         ast.end_children(function_identifier_node);
     }
-    else if (tokens.peek(2).type == '=') {
+    else if (tokens.peek(2).type == '=')
+    {
         // this is a variable / constant def
         ASTNode* variable_def_node = ast.push(ASTIdentifierNode(ASTNodeType::VariableDef, new_symbol_id));
 
@@ -341,64 +364,78 @@ static void parse_def(TokenReader& tokens, AST& ast, Array<SymbolData>& symbols)
 
         tokens.advance();      // advance past semicolon
     }
-    else {
+    else
+    {
         fail_at_token("Invalid definition", tokens.peek());
     }
 }
 
-static void print_ast_node(ASTNode* node, Array<SymbolData> symbols, uint32_t depth) {
+static void print_ast_node(ASTNode* node, Array<SymbolData> symbols, uint32_t depth)
+{
 
-    for (uint32_t i = 0; i < depth; ++i) {
+    for (uint32_t i = 0; i < depth; ++i)
+    {
         std::cout << "  ";
     }
 
-    if (node->type == ASTNodeType::BinaryOperator) {
+    if (node->type == ASTNodeType::BinaryOperator)
+    {
         std::cout << static_cast<ASTBinOpNode*>(node)->op << std::endl;
     }
-    else if (node->type == ASTNodeType::Number) {
+    else if (node->type == ASTNodeType::Number)
+    {
         std::cout << static_cast<ASTNumberNode*>(node)->value << std::endl;
     }
-    else if (node->type == ASTNodeType::Identifier) {
+    else if (node->type == ASTNodeType::Identifier)
+    {
         uint32_t symbol_id = static_cast<ASTIdentifierNode*>(node)->symbol_id;
         symbols[symbol_id].name.print();
         std::cout << std::endl;
     }
-    else if (node->type == ASTNodeType::Assignment) {
+    else if (node->type == ASTNodeType::Assignment)
+    {
         std::cout << "Assignment(";
         uint32_t symbol_id = static_cast<ASTIdentifierNode*>(node)->symbol_id;
         symbols[symbol_id].name.print();
         std::cout << ")" << std::endl;
     }
-    else if (node->type == ASTNodeType::VariableDef) {
+    else if (node->type == ASTNodeType::VariableDef)
+    {
         std::cout << "VariableDef(";
         uint32_t symbol_id = static_cast<ASTIdentifierNode*>(node)->symbol_id;
         symbols[symbol_id].name.print();
         std::cout << ")" << std::endl;
     }
-    else {
+    else
+    {
         std::cout << AST_NODE_TYPE_NAME[node->type] << std::endl;
     }
 
-    if (node->type == ASTNodeType::StatementList) {
+    if (node->type == ASTNodeType::StatementList)
+    {
         symbols = static_cast<ASTStatementListNode*>(node)->symbols;
     }
 
     ASTNode* child = node->child;
-    while (child) {
+    while (child)
+    {
         print_ast_node(child, symbols, depth + 1);
         child = child->sibling;
     }
 }
 
-void parse(const std::vector<Token>& tokens, AST& ast, Array<SymbolData>& global_symbols) {
+void parse(const std::vector<Token>& tokens, AST& ast, Array<SymbolData>& global_symbols)
+{
 
     TokenReader token_reader;
     token_reader.data = tokens.data();
     token_reader.length = tokens.size();
 
-    while (!token_reader.eof()) {
+    while (!token_reader.eof())
+    {
         // top level expressions
-        switch (token_reader.peek().type) {
+        switch (token_reader.peek().type)
+        {
             case TokenType::Name: {
                 parse_def(token_reader, ast, global_symbols);
 
