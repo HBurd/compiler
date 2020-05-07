@@ -140,25 +140,8 @@ struct CodeEmitter
 
     void generate_function_def(ASTNode* function_def_node, SymbolTable symbols)
     {
-        assert(function_def_node->child && function_def_node->child->type == ASTNodeType::ParameterList);
-
-        std::vector<llvm::Type*> arg_types;
-        {
-            ASTNode* parameter = function_def_node->child->child;
-            while (parameter)
-            {
-                arg_types.push_back(llvm::Type::getInt32Ty(llvm_ctxt));
-                parameter = parameter->sibling;
-            }
-        }
-
-        llvm::FunctionType* function_type = llvm::FunctionType::get(llvm::Type::getVoidTy(llvm_ctxt), arg_types, false);
-        llvm::Function* function = llvm::Function::Create(
-            function_type,
-            llvm::Function::ExternalLinkage,
-            make_twine(symbols.symbol_data[static_cast<ASTIdentifierNode*>(function_def_node)->symbol_id].name),
-            module
-        );
+        ASTNode* parameter_list = function_def_node->child;
+        assert(parameter_list && parameter_list->type == ASTNodeType::ParameterList);
 
         ASTStatementListNode* statement_list = static_cast<ASTStatementListNode*>(function_def_node->child->sibling);
         assert(statement_list && statement_list->type == ASTNodeType::StatementList);
@@ -166,6 +149,24 @@ struct CodeEmitter
         SymbolTable function_symbols;
         function_symbols.symbol_data = statement_list->symbols;
         function_symbols.values = new llvm::Value*[statement_list->symbols.length];
+
+        std::vector<llvm::Type*> arg_types;
+        {
+            ASTNode* parameter = parameter_list->child;
+            while (parameter)
+            {
+                arg_types.push_back(get_integer_type(function_symbols.symbol_data[static_cast<ASTIdentifierNode*>(parameter)->symbol_id].type_id, llvm_ctxt));
+                parameter = parameter->sibling;
+            }
+        }
+
+        llvm::FunctionType* function_type = llvm::FunctionType::get(get_integer_type(TypeId::U32, llvm_ctxt), arg_types, false);
+        llvm::Function* function = llvm::Function::Create(
+            function_type,
+            llvm::Function::ExternalLinkage,
+            make_twine(symbols.symbol_data[static_cast<ASTIdentifierNode*>(function_def_node)->symbol_id].name),
+            module
+        );
 
         // set function arg names and values
         {
