@@ -7,6 +7,7 @@
 
 #include "lexer.h"
 #include "parser.h"
+#include "type_check.h"
 #include "codegen_llvm.h"
 
 int main(int argc, char **argv)
@@ -38,6 +39,8 @@ int main(int argc, char **argv)
     symbols.data = new SymbolData[MAX_SYMBOLS];
 
     parse(tokens, ast, symbols);
+
+    check_types(ast);
 
     output_ast(ast, symbols);
 }

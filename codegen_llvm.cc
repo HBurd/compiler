@@ -12,17 +12,38 @@
 #include <cassert>
 #include <vector>
 
+struct SymbolTable
+{
+    Array<SymbolData> symbol_data;
+    llvm::Value** values;
+};
+
 // for interfacing with llvm
 static llvm::StringRef make_twine(SubString substr)
 {
     return llvm::StringRef(substr.start, substr.len);
 }
 
-struct SymbolTable
+static llvm::IntegerType* get_integer_type(uint32_t type_id, llvm::LLVMContext& llvm_ctxt)
 {
-    Array<SymbolData> symbol_data;
-    llvm::Value** values;
-};
+    switch (type_id)
+    {
+        case TypeId::U8:
+        case TypeId::I8:
+            return llvm::Type::getInt8Ty(llvm_ctxt);
+        case TypeId::U16:
+        case TypeId::I16:
+            return llvm::Type::getInt16Ty(llvm_ctxt);
+        case TypeId::U32:
+        case TypeId::I32:
+            return llvm::Type::getInt32Ty(llvm_ctxt);
+        case TypeId::U64:
+        case TypeId::I64:
+            return llvm::Type::getInt64Ty(llvm_ctxt);
+        default:
+            return nullptr;
+    }
+}
 
 struct CodeEmitter
 {
@@ -78,7 +99,8 @@ struct CodeEmitter
                 result = symbols.values[static_cast<ASTIdentifierNode*>(subexpr)->symbol_id];
                 break;
             case ASTNodeType::Number:
-                result = llvm::ConstantInt::get(llvm::Type::getInt32Ty(llvm_ctxt), static_cast<ASTNumberNode*>(subexpr)->value);
+                // TODO: after type checking the number will actually have a type, so don't hardcode
+                result = llvm::ConstantInt::get(get_integer_type(TypeId::U32, llvm_ctxt), static_cast<ASTNumberNode*>(subexpr)->value);
                 break;
             case ASTNodeType::BinaryOperator:
                 result = emit_binop(static_cast<ASTBinOpNode*>(subexpr), symbol_id, symbols);

@@ -21,7 +21,7 @@ const char* AST_NODE_TYPE_NAME[] = {
     [ASTNodeType::FunctionParameter] = "FunctionParameter",
 };
 
-uint8_t OPERATOR_PRECEDENCE[] = {
+uint8_t OPERATOR_PRECEDENCE[TokenType::Count] = {
     ['*'] = 2,
     ['+'] = 1,
     ['-'] = 1,  // TODO: how to differentiate unary and binary
@@ -119,11 +119,11 @@ void AST::end_children(ASTNode* node)
 static bool lookup_symbol(Array<SymbolData>& symbol_table, SubString name, uint32_t* index)
 {
     for (uint32_t i = 0; i < symbol_table.length; ++i)
-{
+    {
         if (symbol_table[i].name == name)
-{
+        {
             if (index)
-{
+            {
                 *index = i;
             }
             return true;
@@ -261,33 +261,31 @@ static void parse_parameter_list(TokenReader& tokens, AST& ast, Array<SymbolData
 {
     assert_at_token(tokens.peek().type == '(', "Expected '('", tokens.peek());
 
-    tokens.advance();
-
     ASTNode* parameter_list_node = ast.push(ASTNode(ASTNodeType::ParameterList));
 
     ast.begin_children(parameter_list_node);
 
-    if (tokens.peek().type != ')')
+    if (tokens.peek(1).type != ')')
     {
-        assert_at_token(tokens.peek().type == TokenType::Name, "Expected an identifier", tokens.peek());
-        ast.push(ASTIdentifierNode(ASTNodeType::FunctionParameter, symbols.length));
-        SymbolData new_symbol;
-        new_symbol.name = tokens.peek().name;
-        symbols.push(new_symbol);
-
-        tokens.advance();
-
-        while(tokens.peek().type == ',')
+        do
         {
             tokens.advance();
 
             assert_at_token(tokens.peek().type == TokenType::Name, "Expected an identifier", tokens.peek());
+            
             ast.push(ASTIdentifierNode(ASTNodeType::FunctionParameter, symbols.length));
+
+            // check the type
+            assert_at_token(tokens.peek(1).type == ':', "Expected ':'", tokens.peek(1));
+            assert_at_token(tokens.peek(2).type == TokenType::TypeName, "Expected a type", tokens.peek(2));
+
+            SymbolData new_symbol;
             new_symbol.name = tokens.peek().name;
+            new_symbol.type_id = tokens.peek(2).type_id;
             symbols.push(new_symbol);
 
-            tokens.advance();
-        }
+            tokens.advance(3);
+        } while(tokens.peek().type == ',');
     }
 
     assert_at_token(tokens.peek().type == ')', "Expected ')'", tokens.peek());
@@ -327,16 +325,18 @@ static void parse_def(TokenReader& tokens, AST& ast, Array<SymbolData>& symbols)
     // check if an entry is already in the symbol table
     assert_at_token(!lookup_symbol(symbols, tokens.peek().name, nullptr), "Symbol already declared", tokens.peek());
 
-    uint32_t new_symbol_id = symbols.length;
-
-    SymbolData new_symbol;
-    new_symbol.name = tokens.peek().name;
-    symbols.push(new_symbol);
-
     // figure out which type of def:
     if (tokens.peek(2).type == '(')
     {
         // this is a function def
+
+        uint32_t new_symbol_id = symbols.length;
+
+        SymbolData new_symbol;
+        new_symbol.name = tokens.peek().name;
+        new_symbol.type_id = TypeId::Invalid;
+        symbols.push(new_symbol);
+
         ASTNode* function_identifier_node = ast.push(ASTIdentifierNode(ASTNodeType::FunctionDef, new_symbol_id));
 
         ast.begin_children(function_identifier_node);
@@ -355,12 +355,26 @@ static void parse_def(TokenReader& tokens, AST& ast, Array<SymbolData>& symbols)
     }
     else if (tokens.peek(2).type == '=')
     {
-        // this is a variable / constant def
+        assert(false && "type inference not yet supported");
+    }
+    else if (tokens.peek(2).type == TokenType::TypeName)
+    {
+        // This is a variable def
+
+        uint32_t new_symbol_id = symbols.length;
+
+        SymbolData new_symbol;
+        new_symbol.name = tokens.peek().name;
+        new_symbol.type_id = tokens.peek(2).type_id;
+
         ASTNode* variable_def_node = ast.push(ASTIdentifierNode(ASTNodeType::VariableDef, new_symbol_id));
 
-        tokens.advance(3);
+        tokens.advance(4);
 
         parse_expression(tokens, ast, symbols, 1, &variable_def_node->child);
+
+        // we only push the defined symbol after expression has been parsed
+        symbols.push(new_symbol);
 
         tokens.advance();      // advance past semicolon
     }

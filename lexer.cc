@@ -1,11 +1,10 @@
 #include "lexer.h"
+#include "parser.h"
 #include "report_error.h"
 #include <cstring>
 #include <cassert>
 
 #include <iostream>
-
-const size_t IDENTIFIER_BUF_SIZE = 64;
 
 void SubString::print()
 {
@@ -23,6 +22,24 @@ bool SubString::operator==(const SubString& rhs)
         if (rhs.start[i] != start[i]) return false;
     }
     return true;
+}
+
+bool operator==(const SubString& lhs, const char* rhs)
+{
+    uint32_t i = 0;
+    for (; rhs[i]; ++i)
+    {
+        if (i >= lhs.len) return false;
+        if (lhs.start[i] != rhs[i]) return false;
+    }
+
+    if (i < lhs.len) return false;
+    return true;
+}
+
+bool operator==(const char* lhs, const SubString& rhs)
+{
+    return rhs == lhs;
 }
 
 static uint64_t string_to_unsigned(const char* start, uint32_t len)
@@ -61,7 +78,7 @@ static bool is_single_char_token(char c)
 
 static bool is_whitespace(char c)
 {
-    return c == ' ' || c == '\t';
+    return c == ' ' || c == '\t' || c == '\n' || c == '\r';
 }
 
 static bool valid_identifier_char(char c)
@@ -82,16 +99,57 @@ static bool valid_terminator(char c)
     return is_single_char_token(c) || is_whitespace(c);
 }
 
-static Token get_keyword_token(const char *word)
+static Token get_keyword_token(SubString word)
 {
     Token result;
-    if (strcmp(word, "return") == 0)
+    if (word == "return")
     {
         result.type = TokenType::Return;
+    }
+    else if (word == "u8")
+    {
+        result.type = TokenType::TypeName;
+        result.type_id = TypeId::U8;
+    }
+    else if (word == "u16")
+    {
+        result.type = TokenType::TypeName;
+        result.type_id = TypeId::U16;
+    }
+    else if (word == "u32")
+    {
+        result.type = TokenType::TypeName;
+        result.type_id = TypeId::U32;
+    }
+    else if (word == "u64")
+    {
+        result.type = TokenType::TypeName;
+        result.type_id = TypeId::U64;
+    }
+    else if (word == "i8")
+    {
+        result.type = TokenType::TypeName;
+        result.type_id = TypeId::I8;
+    }
+    else if (word == "i16")
+    {
+        result.type = TokenType::TypeName;
+        result.type_id = TypeId::I16;
+    }
+    else if (word == "i32")
+    {
+        result.type = TokenType::TypeName;
+        result.type_id = TypeId::I32;
+    }
+    else if (word == "i64")
+    {
+        result.type = TokenType::TypeName;
+        result.type_id = TypeId::I64;
     }
     else
     {
         result.type = TokenType::Name;
+        result.name = word;
     }
 
     return result;
@@ -141,17 +199,14 @@ void lex(const char* file, std::vector<Token>& tokens)
                 
                 compile_assert_with_marker(valid_terminator(file[position]), "Invalid character terminating token", line, identifier_start - line_start, 1);
 
-                char identifier_buf[IDENTIFIER_BUF_SIZE] = {};
-                uint32_t identifier_length = position - identifier_start;
-                assert(identifier_length < IDENTIFIER_BUF_SIZE); // ensure 1 extra for terminator
-                memcpy(identifier_buf, file + identifier_start, identifier_length);
+                SubString token_name;
+                token_name.start = file + identifier_start;
+                token_name.len = position - identifier_start;
 
-                Token new_token = get_keyword_token(identifier_buf);
+                Token new_token = get_keyword_token(token_name);
                 new_token.line = line;
                 new_token.column = identifier_start - line_start;
                 new_token.len = position - identifier_start;
-                new_token.name.start = file + identifier_start;
-                new_token.name.len = position - identifier_start;
                 
                 tokens.push_back(new_token);
             }

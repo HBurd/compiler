@@ -79,3 +79,15 @@ struct Array
         return &data[length - 1];
     }
 };
+
+struct SubString
+{
+    const char* start = nullptr;
+    uint32_t len = 0;
+
+    void print();
+    bool operator==(const SubString& rhs);
+};
+
+bool operator==(const SubString& lhs, const char* rhs);
+bool operator==(const char* lhs, const SubString& rhs);

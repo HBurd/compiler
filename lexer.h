@@ -1,16 +1,8 @@
 #pragma once
 
+#include "util.h"
 #include <vector>
 #include <stdint.h>
-
-struct SubString
-{
-    const char* start = nullptr;
-    uint32_t len = 0;
-
-    void print();
-    bool operator==(const SubString& rhs);
-};
 
 namespace TokenType
 {
@@ -18,6 +10,7 @@ namespace TokenType
     {
         Return = 128,
         Name,
+        TypeName,
         Number,
         Invalid,
 
@@ -34,17 +27,18 @@ struct Token
     uint32_t column = 0;
     uint32_t len = 0;
 
+    union
+    {
+        uint64_t number_value;
+        SubString name;
+        uint32_t type_id;       // for default type names, like u32 etc
+    };
+
     Token()
     {
         // hack to un-delete default token constructor
         name = SubString();
     }
-
-    union
-    {
-        uint64_t number_value;
-        SubString name;
-    };
 };
 
 void lex(const char* file, std::vector<Token>& tokens);

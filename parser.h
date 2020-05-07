@@ -24,12 +24,30 @@ namespace ASTNodeType
 }
 
 extern const char* AST_NODE_TYPE_NAME[ASTNodeType::Count];
-extern uint8_t OPERATOR_PRECEDENCE[TokenType::Count];
+
+namespace TypeId
+{
+    enum
+    {
+        Invalid,
+        U8,
+        I8,
+        U16,
+        I16,
+        U32,
+        I32,
+        U64,
+        I64,
+
+        Count
+    };
+}
 
 constexpr uint32_t MAX_SYMBOLS = 1024;
 struct SymbolData
 {
     SubString name;
+    uint32_t type_id;
 };
 
 struct ASTNode
