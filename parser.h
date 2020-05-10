@@ -41,6 +41,8 @@ namespace TypeId
         U64,
         I64,
 
+        Bool,
+
         Count
     };
 }

@@ -156,6 +156,11 @@ static Token get_keyword_token(SubString word)
         result.type = TokenType::TypeName;
         result.type_id = TypeId::I64;
     }
+    else if (word == "bool")
+    {
+        result.type = TokenType::TypeName;
+        result.type_id = TypeId::Bool;
+    }
     else
     {
         result.type = TokenType::Name;

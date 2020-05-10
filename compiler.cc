@@ -40,7 +40,7 @@ int main(int argc, char **argv)
 
     parse(tokens, ast, symbols);
 
-    //check_types(ast);
+    check_types(ast);
 
-    //output_ast(ast, symbols);
+    output_ast(ast, symbols);
 }

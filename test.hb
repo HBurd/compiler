@@ -1,8 +1,8 @@
-main: (x: u8, y: u8)
+main: (x: u32, y: u32)
 {
-    if x + y
+    if x < y
     {
-        while x
+        while x > x
         {
             x = x + 1;
         }

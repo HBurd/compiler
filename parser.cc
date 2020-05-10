@@ -24,9 +24,11 @@ const char* AST_NODE_TYPE_NAME[] = {
 };
 
 uint8_t OPERATOR_PRECEDENCE[TokenType::Count] = {
-    ['*'] = 2,
-    ['+'] = 1,
-    ['-'] = 1,  // TODO: how to differentiate unary and binary
+    ['*'] = 20,
+    ['+'] = 10,
+    ['-'] = 10,  // TODO: how to differentiate unary and binary
+    ['<'] = 5,
+    ['>'] = 5,
 };
 
 struct TokenReader {
