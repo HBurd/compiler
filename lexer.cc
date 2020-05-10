@@ -73,6 +73,8 @@ static bool is_single_char_token(char c)
            (c == '=') ||
            (c == ':') ||
            (c == ',') ||
+           (c == '<') ||
+           (c == '>') ||
            (c == ';');
 }
 
@@ -105,6 +107,14 @@ static Token get_keyword_token(SubString word)
     if (word == "return")
     {
         result.type = TokenType::Return;
+    }
+    else if (word == "if")
+    {
+        result.type = TokenType::If;
+    }
+    else if (word == "while")
+    {
+        result.type = TokenType::While;
     }
     else if (word == "u8")
     {

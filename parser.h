@@ -18,6 +18,8 @@ namespace ASTNodeType
         Identifier,
         Number,
         BinaryOperator,
+        If,
+        While,
 
         Count
     };
@@ -111,6 +113,7 @@ struct AST
 
     ASTNode* push_orphan(const ASTNode& node);
     ASTNode* push(const ASTNode& node);
+    void attach(ASTNode* node);
 
     void begin_children(ASTNode* node);
     void end_children(ASTNode* node);

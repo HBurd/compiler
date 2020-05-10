@@ -1,6 +1,13 @@
 main: (x: u8, y: u8)
 {
-    z: u8 = x + y;
-    x = y + z;
-    return x + x;
+    if x + y
+    {
+        while x
+        {
+            x = x + 1;
+        }
+        return 1;
+    }
+
+    return 0;
 }

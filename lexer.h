@@ -11,7 +11,10 @@ namespace TokenType
         Return = 128,
         Name,
         TypeName,
-        Number,
+        Number, 
+        If,
+        While,
+        
         Invalid,
 
         Count
