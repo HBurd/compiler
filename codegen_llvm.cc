@@ -84,6 +84,16 @@ struct CodeEmitter
                 return ir_builder.CreateSub(lhs, rhs, make_twine(value_name));
             case '*':
                 return ir_builder.CreateMul(lhs, rhs, make_twine(value_name));
+            case '<':
+                if (subexpr->is_signed)
+                    return ir_builder.CreateICmpSLT(lhs, rhs, make_twine(value_name));
+                else
+                    return ir_builder.CreateICmpULT(lhs, rhs, make_twine(value_name));
+            case '>':
+                if (subexpr->is_signed)
+                    return ir_builder.CreateICmpSGT(lhs, rhs, make_twine(value_name));
+                else
+                    return ir_builder.CreateICmpUGT(lhs, rhs, make_twine(value_name));
             default:
                 assert(false && "Unsupported operator");
         }
@@ -132,6 +142,14 @@ struct CodeEmitter
             {
                 llvm::Value* ret_value = emit_subexpr(statement->child, ANONYMOUS_VALUE, symbols);
                 ir_builder.CreateRet(ret_value);
+            } break;
+            case ASTNodeType::If:
+            {
+                llvm::Value* condition_value = emit_subexpr(statement->child, ANONYMOUS_VALUE, symbols);
+            } break;
+            case ASTNodeType::While:
+            {
+                llvm::Value* condition_value = emit_subexpr(statement->child, ANONYMOUS_VALUE, symbols);
             } break;
             default:
                 assert(false && "Invalid syntax tree - expected a statement");

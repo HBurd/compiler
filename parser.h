@@ -66,7 +66,12 @@ struct ASTNode
 
 struct ASTBinOpNode : public ASTNode
 {
-    char op;
+    uint32_t op;
+
+    //---------------------
+    // Set in type checking
+    //---------------------
+    bool is_signed = false;  // for greater than and less than
 
     ASTBinOpNode(char op_)
         :ASTNode(ASTNodeType::BinaryOperator),

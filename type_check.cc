@@ -2,7 +2,15 @@
 
 static void typecheck_statement_list(ASTNode* statement);
 
-static uint32_t deduce_binop_type(uint32_t op, uint32_t lhs_type, uint32_t rhs_type)
+static bool is_signed_integer(uint32_t type_id)
+{
+    return type_id == TypeId::I8
+        || type_id == TypeId::I16
+        || type_id == TypeId::I32
+        || type_id == TypeId::I64;
+}
+
+static uint32_t deduce_binop_result_type(uint32_t op, uint32_t lhs_type, uint32_t rhs_type)
 {
     assert(lhs_type == rhs_type);
     
@@ -13,6 +21,17 @@ static uint32_t deduce_binop_type(uint32_t op, uint32_t lhs_type, uint32_t rhs_t
             return TypeId::Bool;
         default:
             return lhs_type;
+    }
+}
+
+static void set_binop_type_info(ASTBinOpNode* binop, uint32_t lhs_type, uint32_t rhs_type)
+{
+    // TODO: This assertion is temporary - I don't think this will be the case in general
+    assert(lhs_type == rhs_type);
+
+    if (binop->op == '<' || binop->op == '>')
+    {
+        binop->is_signed = is_signed_integer(lhs_type);
     }
 }
 
@@ -27,7 +46,10 @@ static uint32_t deduce_type(ASTNode* expr, Array<SymbolData> symbols)
         case ASTNodeType::BinaryOperator: {
             uint32_t lhs_type = deduce_type(expr->child, symbols);
             uint32_t rhs_type = deduce_type(expr->child->sibling, symbols);
-            return deduce_binop_type(static_cast<ASTBinOpNode*>(expr)->op, lhs_type, rhs_type);
+
+            set_binop_type_info(static_cast<ASTBinOpNode*>(expr), lhs_type, rhs_type);
+
+            return deduce_binop_result_type(static_cast<ASTBinOpNode*>(expr)->op, lhs_type, rhs_type);
         }
         default:
             return TypeId::Invalid;
@@ -70,7 +92,7 @@ static void typecheck_statement_list(ASTNode* statement_list)
     }
 }
 
-void check_types(const AST& ast)
+void check_types(AST& ast)
 {
     assert(ast.start->type == ASTNodeType::FunctionDef);
 
