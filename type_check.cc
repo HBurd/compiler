@@ -1,6 +1,6 @@
 #include "type_check.h"
 
-static void typecheck_statement_list(ASTNode* statement);
+static void set_statement_list_type_info(ASTNode* statement);
 
 static bool is_signed_integer(uint32_t type_id)
 {
@@ -35,7 +35,7 @@ static void set_binop_type_info(ASTBinOpNode* binop, uint32_t lhs_type, uint32_t
     }
 }
 
-static uint32_t deduce_type(ASTNode* expr, Array<SymbolData> symbols)
+static uint32_t set_expr_type_info(ASTNode* expr, Array<SymbolData> symbols)
 {
     switch (expr->type)
     {
@@ -44,8 +44,8 @@ static uint32_t deduce_type(ASTNode* expr, Array<SymbolData> symbols)
         case ASTNodeType::Identifier:
             return symbols[static_cast<ASTIdentifierNode*>(expr)->symbol_id].type_id;
         case ASTNodeType::BinaryOperator: {
-            uint32_t lhs_type = deduce_type(expr->child, symbols);
-            uint32_t rhs_type = deduce_type(expr->child->sibling, symbols);
+            uint32_t lhs_type = set_expr_type_info(expr->child, symbols);
+            uint32_t rhs_type = set_expr_type_info(expr->child->sibling, symbols);
 
             set_binop_type_info(static_cast<ASTBinOpNode*>(expr), lhs_type, rhs_type);
 
@@ -56,47 +56,47 @@ static uint32_t deduce_type(ASTNode* expr, Array<SymbolData> symbols)
     }
 }
 
-static void typecheck_statement(ASTNode* statement, Array<SymbolData> symbols)
+static void set_statement_type_info(ASTNode* statement, Array<SymbolData> symbols)
 {
     // TODO: need proper error messages here - can't do that without tokens currently
     switch (statement->type)
     {
         case ASTNodeType::VariableDef:
         case ASTNodeType::Assignment:
-            assert(symbols[static_cast<ASTIdentifierNode*>(statement)->symbol_id].type_id == deduce_type(statement->child, symbols));
+            assert(symbols[static_cast<ASTIdentifierNode*>(statement)->symbol_id].type_id == set_expr_type_info(statement->child, symbols));
             break;
         case ASTNodeType::Return:
             if (statement->child)
             {
-                deduce_type(statement->child, symbols);
+                set_expr_type_info(statement->child, symbols);
             }
             break;
         case ASTNodeType::If:
         case ASTNodeType::While:
-            assert(deduce_type(statement->child, symbols) == TypeId::Bool);
-            typecheck_statement_list(statement->child->sibling);
+            assert(set_expr_type_info(statement->child, symbols) == TypeId::Bool);
+            set_statement_list_type_info(statement->child->sibling);
             break;
         default:
             assert(false && "Unsupported");
     }
 }
 
-static void typecheck_statement_list(ASTNode* statement_list)
+static void set_statement_list_type_info(ASTNode* statement_list)
 {
     assert(statement_list->type == ASTNodeType::StatementList);
     ASTNode* statement = statement_list->child;
     while (statement)
     {
-        typecheck_statement(statement, static_cast<ASTStatementListNode*>(statement_list)->symbols);
+        set_statement_type_info(statement, static_cast<ASTStatementListNode*>(statement_list)->symbols);
         statement = statement->sibling;
     }
 }
 
-void check_types(AST& ast)
+void set_ast_type_info(AST& ast)
 {
     assert(ast.start->type == ASTNodeType::FunctionDef);
 
     ASTNode* statement_list = ast.start->child->sibling;
 
-    typecheck_statement_list(statement_list);
+    set_statement_list_type_info(statement_list);
 }

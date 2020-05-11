@@ -145,7 +145,17 @@ struct CodeEmitter
             } break;
             case ASTNodeType::If:
             {
+                llvm::Function* function = ir_builder.GetInsertBlock()->getParent();
+                llvm::BasicBlock* then_block = llvm::BasicBlock::Create(llvm_ctxt, "then", function);
+                llvm::BasicBlock* else_block = llvm::BasicBlock::Create(llvm_ctxt, "else", function);
+                llvm::BasicBlock* fi_block = llvm::BasicBlock::Create(llvm_ctxt, "fi", function);
+
                 llvm::Value* condition_value = emit_subexpr(statement->child, ANONYMOUS_VALUE, symbols);
+                ir_builder.CreateCondBr(condition_value, then_block, else_block);
+
+                ir_builder.SetInsertPoint(then_block);
+                emit_statement_list(statement->child->sibling, symbols);
+                ir_builder.SetInsertPoint(fi_block);
             } break;
             case ASTNodeType::While:
             {
@@ -153,6 +163,19 @@ struct CodeEmitter
             } break;
             default:
                 assert(false && "Invalid syntax tree - expected a statement");
+        }
+    }
+
+    void emit_statement_list(ASTNode* statement_list, SymbolTable symbols)
+    {
+        assert(statement_list->type == ASTNodeType::StatementList);
+
+        ASTNode* statement = statement_list->child;
+
+        while(statement)
+        {
+            emit_statement(statement, symbols);
+            statement = statement->sibling;
         }
     }
 
@@ -205,13 +228,7 @@ struct CodeEmitter
         llvm::BasicBlock* entry = llvm::BasicBlock::Create(llvm_ctxt, "entry", function);
         ir_builder.SetInsertPoint(entry);
 
-        ASTNode* statement = statement_list->child;
-
-        while(statement)
-        {
-            emit_statement(statement, function_symbols);
-            statement = statement->sibling;
-        }
+        emit_statement_list(statement_list, function_symbols);
 
         delete[] function_symbols.values;
 

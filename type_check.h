@@ -1,4 +1,4 @@
 #pragma once
 #include "parser.h"
 
-void check_types(AST& ast);
+void set_ast_type_info(AST& ast);
