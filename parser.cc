@@ -160,20 +160,17 @@ static void parse_def(TokenReader& tokens, AST& ast, Scope& scope);
 static void parse_statement_list(TokenReader& tokens, AST& ast, Scope& scope);
 
 // We stick expressions on the AST in RPN to make left to right precedence easier
-static void parse_expression(TokenReader& tokens, AST& ast, Scope& scope, uint8_t precedence, ASTNode** expr)
+static ASTNode* parse_expression(TokenReader& tokens, AST& ast, Scope& scope, uint8_t precedence)
 {
-
+    ASTNode* result;
     if (tokens.peek().type == '(')
     {
         tokens.advance();
 
-        ASTNode* subexpr = nullptr;
-        parse_expression(tokens, ast, scope, 1, &subexpr);
+        result = parse_expression(tokens, ast, scope, 1);
 
         assert_at_token(tokens.peek().type == ')', "Missing ')'", tokens.peek());
-
-        assert_at_token(subexpr, "Empty subexpression", tokens.peek());
-        *expr = subexpr;
+        assert_at_token(result, "Empty subexpression", tokens.peek());
 
         tokens.advance();      // move past ')'
     }
@@ -183,7 +180,7 @@ static void parse_expression(TokenReader& tokens, AST& ast, Scope& scope, uint8_
         if (OPERATOR_PRECEDENCE[tokens.peek(1).type] >= precedence)
         {
             // this sticks the subexpr of higher precedence onto the AST
-            parse_expression(tokens, ast, scope, precedence + 1, expr);
+            result = parse_expression(tokens, ast, scope, precedence + 1);
 
             // now token_idx is after a precedence + 1 subexpression
 
@@ -195,14 +192,13 @@ static void parse_expression(TokenReader& tokens, AST& ast, Scope& scope, uint8_
                 tokens.advance();
 
                 // now recurse so that the right expression is on the AST
-                ASTNode* right_subexpr;
-                parse_expression(tokens, ast, scope, precedence + 1, &right_subexpr);
+                ASTNode* right_subexpr = parse_expression(tokens, ast, scope, precedence + 1);
 
-                (*expr)->sibling = right_subexpr;
+                result->sibling = right_subexpr;
 
                 ASTNode* op_node = ast.push_orphan(ASTBinOpNode(op));
-                op_node->child = *expr;
-                *expr = op_node;
+                op_node->child = result;
+                result = op_node;
             }
         }
         else
@@ -213,10 +209,10 @@ static void parse_expression(TokenReader& tokens, AST& ast, Scope& scope, uint8_
                     SymbolData* symbol = scope.lookup_symbol(tokens.peek().name);
                     assert_at_token(symbol, "Unknown identifier", tokens.peek());
 
-                    *expr = ast.push_orphan(ASTIdentifierNode(ASTNodeType::Identifier, symbol));
+                    result = ast.push_orphan(ASTIdentifierNode(ASTNodeType::Identifier, symbol));
                 } break;
                 case TokenType::Number:
-                    *expr = ast.push_orphan(ASTNumberNode(tokens.peek().number_value));
+                    result = ast.push_orphan(ASTNumberNode(tokens.peek().number_value));
                     break;
                 default:
                     assert(false);
@@ -233,6 +229,8 @@ static void parse_expression(TokenReader& tokens, AST& ast, Scope& scope, uint8_
     // caller must determine if it's a valid terminator for the expression
 
     assert(OPERATOR_PRECEDENCE[tokens.peek().type] < precedence);
+
+    return result;
 }
 
 static void parse_if_or_while(TokenReader& tokens, AST& ast, Scope& scope)
@@ -260,8 +258,7 @@ static void parse_if_or_while(TokenReader& tokens, AST& ast, Scope& scope)
 
     tokens.advance();
 
-    ASTNode* condition_node;
-    parse_expression(tokens, ast, scope, 1, &condition_node);
+    ASTNode* condition_node = parse_expression(tokens, ast, scope, 1);
     ast.attach(condition_node);
 
     assert_at_token(tokens.peek().type == '{', "Expected block following if", tokens.peek());
@@ -297,7 +294,7 @@ static void parse_statement(TokenReader& tokens, AST& ast, Scope& scope)
 
         tokens.advance(2);
 
-        parse_expression(tokens, ast, scope, 1, &assign_node->child);
+        assign_node->child = parse_expression(tokens, ast, scope, 1);
         assert_at_token(tokens.peek().type == ';', "Expected ';'", tokens.peek());
 
         tokens.advance();  // advance past semicolon
@@ -306,7 +303,7 @@ static void parse_statement(TokenReader& tokens, AST& ast, Scope& scope)
     {
         ASTNode* return_node = ast.push(ASTNode(ASTNodeType::Return)); // TODO: can only return an expression right now
         tokens.advance();
-        parse_expression(tokens, ast, scope, 1, &return_node->child);
+        return_node->child = parse_expression(tokens, ast, scope, 1);
         assert_at_token(tokens.peek().type == ';', "Expected ';'", tokens.peek());
 
         tokens.advance();  // advance past semicolon
@@ -422,7 +419,7 @@ static void parse_def(TokenReader& tokens, AST& ast, Scope& scope)
 
         tokens.advance(4);
 
-        parse_expression(tokens, ast, scope, 1, &variable_def_node->child);
+        variable_def_node->child = parse_expression(tokens, ast, scope, 1);
 
         // symbol is set here
         static_cast<ASTIdentifierNode*>(variable_def_node)->symbol = scope.push(variable_name, variable_type);
@@ -445,7 +442,7 @@ static void print_ast_node(ASTNode* node, Scope& scope, uint32_t depth)
 
     if (node->type == ASTNodeType::BinaryOperator)
     {
-        std::cout << static_cast<ASTBinOpNode*>(node)->op << std::endl;
+        std::cout << (char)static_cast<ASTBinOpNode*>(node)->op << std::endl;
     }
     else if (node->type == ASTNodeType::Number)
     {

@@ -1,4 +1,4 @@
-main: (x: i32, y: i32)
+main: (x: u32, y: u32)
 {
     if x < y
     {
@@ -7,9 +7,9 @@ main: (x: i32, y: i32)
         {
             x = x + y;
         }
-        z = z + 1;
+        z = z + 2 * x + 3 * y;
         return z;
     }
 
-    return z;
+    return 1;
 }
