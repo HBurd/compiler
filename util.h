@@ -68,9 +68,9 @@ struct Array
         return data[idx];
     }
 
-    const T* operator[](uint32_t idx) const
+    const T& operator[](uint32_t idx) const
     {
-        return &data[idx];
+        return data[idx];
     }
 
     T* back()
@@ -85,7 +85,7 @@ struct SubString
     const char* start = nullptr;
     uint32_t len = 0;
 
-    void print();
+    void print() const;
     bool operator==(const SubString& rhs);
 };
 

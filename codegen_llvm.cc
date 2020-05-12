@@ -12,12 +12,6 @@
 #include <cassert>
 #include <vector>
 
-struct SymbolTable
-{
-    Array<SymbolData> symbol_data;
-    llvm::Value** values;
-};
-
 // for interfacing with llvm
 static llvm::StringRef make_twine(SubString substr)
 {
@@ -51,8 +45,6 @@ struct CodeEmitter
     llvm::IRBuilder<> ir_builder;
     llvm::Module* module;
 
-    static constexpr uint32_t ANONYMOUS_VALUE = 0xFFFFFFFF;
-
     CodeEmitter()
     :ir_builder(llvm_ctxt)
     {
@@ -64,16 +56,16 @@ struct CodeEmitter
         delete module;
     }
 
-    llvm::Value* emit_binop(ASTBinOpNode* subexpr, uint32_t symbol_id, SymbolTable symbols)
+    llvm::Value* emit_binop(ASTBinOpNode* subexpr, SymbolData* symbol)
     {
         ASTNode* operand = subexpr->child;
-        llvm::Value* lhs = emit_subexpr(operand, ANONYMOUS_VALUE, symbols);
-        llvm::Value* rhs = emit_subexpr(operand->sibling, ANONYMOUS_VALUE, symbols);
+        llvm::Value* lhs = emit_subexpr(operand, nullptr);
+        llvm::Value* rhs = emit_subexpr(operand->sibling, nullptr);
 
         SubString value_name;
-        if (symbol_id != ANONYMOUS_VALUE)
+        if (symbol)
         {
-            value_name = symbols.symbol_data[symbol_id].name;
+            value_name = symbol->name;
         }
 
         switch (subexpr->op)
@@ -100,47 +92,48 @@ struct CodeEmitter
         return nullptr;
     }
 
-    llvm::Value* emit_subexpr(ASTNode* subexpr, uint32_t symbol_id, SymbolTable symbols)
+    llvm::Value* emit_subexpr(ASTNode* subexpr, SymbolData* symbol)
     {
         llvm::Value* result;
         switch (subexpr->type)
         {
             case ASTNodeType::Identifier:
-                result = symbols.values[static_cast<ASTIdentifierNode*>(subexpr)->symbol_id];
+                result = (llvm::Value*)static_cast<ASTIdentifierNode*>(subexpr)->symbol->codegen_data;
                 break;
             case ASTNodeType::Number:
                 // TODO: after type checking the number will actually have a type, so don't hardcode
                 result = llvm::ConstantInt::get(get_integer_type(TypeId::U32, llvm_ctxt), static_cast<ASTNumberNode*>(subexpr)->value);
                 break;
             case ASTNodeType::BinaryOperator:
-                result = emit_binop(static_cast<ASTBinOpNode*>(subexpr), symbol_id, symbols);
+                result = emit_binop(static_cast<ASTBinOpNode*>(subexpr), symbol);
                 break;
             default:
                 assert(false && "Invalid syntax tree - expected a subexpression");
         }
 
-        if (symbol_id != ANONYMOUS_VALUE)
+        // TODO: I think this doesn't belong here
+        if (symbol)
         {
-            symbols.values[symbol_id] = result;
+            symbol->codegen_data = result;
         }
         return result;
     }
 
-    void emit_statement(ASTNode* statement, SymbolTable symbols)
+    void emit_statement(ASTNode* statement)
     {
         switch (statement->type)
         {
             case ASTNodeType::VariableDef:
             case ASTNodeType::Assignment:
             {
-                emit_subexpr(statement->child, static_cast<ASTIdentifierNode*>(statement)->symbol_id, symbols);
+                emit_subexpr(statement->child, static_cast<ASTIdentifierNode*>(statement)->symbol);
             } break;
             case ASTNodeType::FunctionDef:
                 // do nothing
                 break;
             case ASTNodeType::Return:
             {
-                llvm::Value* ret_value = emit_subexpr(statement->child, ANONYMOUS_VALUE, symbols);
+                llvm::Value* ret_value = emit_subexpr(statement->child, nullptr);
                 ir_builder.CreateRet(ret_value);
             } break;
             case ASTNodeType::If:
@@ -150,17 +143,17 @@ struct CodeEmitter
                 llvm::BasicBlock* else_block = llvm::BasicBlock::Create(llvm_ctxt, "else", function);
                 llvm::BasicBlock* fi_block = llvm::BasicBlock::Create(llvm_ctxt, "end_if", function);
 
-                llvm::Value* condition_value = emit_subexpr(statement->child, ANONYMOUS_VALUE, symbols);
+                llvm::Value* condition_value = emit_subexpr(statement->child, nullptr);
                 ir_builder.CreateCondBr(condition_value, then_block, else_block);
 
                 ir_builder.SetInsertPoint(then_block);
-                emit_statement_list(statement->child->sibling, symbols);
+                emit_statement_list(statement->child->sibling);
                 ir_builder.CreateBr(fi_block);
                 if (statement->child->sibling->sibling)
                 {
                     // this is the statement list corresponding to the else block
                     ir_builder.SetInsertPoint(else_block);
-                    emit_statement_list(statement->child->sibling->sibling, symbols);
+                    emit_statement_list(statement->child->sibling->sibling);
                     ir_builder.CreateBr(fi_block);
                 }
                 ir_builder.SetInsertPoint(fi_block);
@@ -171,12 +164,12 @@ struct CodeEmitter
                 llvm::BasicBlock* do_block = llvm::BasicBlock::Create(llvm_ctxt, "do", function);
                 llvm::BasicBlock* fi_block = llvm::BasicBlock::Create(llvm_ctxt, "end_do", function);
 
-                llvm::Value* condition_value = emit_subexpr(statement->child, ANONYMOUS_VALUE, symbols);
+                llvm::Value* condition_value = emit_subexpr(statement->child, nullptr);
                 ir_builder.CreateCondBr(condition_value, do_block, fi_block);
 
                 ir_builder.SetInsertPoint(do_block);
-                emit_statement_list(statement->child->sibling, symbols);
-                llvm::Value* end_condition_value = emit_subexpr(statement->child, ANONYMOUS_VALUE, symbols);
+                emit_statement_list(statement->child->sibling);
+                llvm::Value* end_condition_value = emit_subexpr(statement->child, nullptr);
                 ir_builder.CreateCondBr(end_condition_value, do_block, fi_block);
                 ir_builder.SetInsertPoint(fi_block);
             } break;
@@ -185,7 +178,7 @@ struct CodeEmitter
         }
     }
 
-    void emit_statement_list(ASTNode* statement_list, SymbolTable symbols)
+    void emit_statement_list(ASTNode* statement_list)
     {
         assert(statement_list->type == ASTNodeType::StatementList);
 
@@ -193,12 +186,12 @@ struct CodeEmitter
 
         while(statement)
         {
-            emit_statement(statement, symbols);
+            emit_statement(statement);
             statement = statement->sibling;
         }
     }
 
-    void generate_function_def(ASTNode* function_def_node, SymbolTable symbols)
+    void generate_function_def(ASTNode* function_def_node)
     {
         ASTNode* parameter_list = function_def_node->child;
         assert(parameter_list && parameter_list->type == ASTNodeType::ParameterList);
@@ -206,16 +199,12 @@ struct CodeEmitter
         ASTStatementListNode* statement_list = static_cast<ASTStatementListNode*>(function_def_node->child->sibling);
         assert(statement_list && statement_list->type == ASTNodeType::StatementList);
 
-        SymbolTable function_symbols;
-        function_symbols.symbol_data = statement_list->symbols;
-        function_symbols.values = new llvm::Value*[statement_list->symbols.length];
-
         std::vector<llvm::Type*> arg_types;
         {
             ASTNode* parameter = parameter_list->child;
             while (parameter)
             {
-                arg_types.push_back(get_integer_type(function_symbols.symbol_data[static_cast<ASTIdentifierNode*>(parameter)->symbol_id].type_id, llvm_ctxt));
+                arg_types.push_back(get_integer_type(static_cast<ASTIdentifierNode*>(parameter)->symbol->type_id, llvm_ctxt));
                 parameter = parameter->sibling;
             }
         }
@@ -224,7 +213,7 @@ struct CodeEmitter
         llvm::Function* function = llvm::Function::Create(
             function_type,
             llvm::Function::ExternalLinkage,
-            make_twine(symbols.symbol_data[static_cast<ASTIdentifierNode*>(function_def_node)->symbol_id].name),
+            make_twine(static_cast<ASTIdentifierNode*>(function_def_node)->symbol->name),
             module
         );
 
@@ -236,8 +225,8 @@ struct CodeEmitter
             {
                 assert(arg != function->arg_end());
 
-                arg->setName(make_twine(function_symbols.symbol_data[parameter->symbol_id].name));
-                function_symbols.values[parameter->symbol_id] = &(*arg);  // convert iterator to pointer
+                arg->setName(make_twine(parameter->symbol->name));
+                parameter->symbol->codegen_data = &(*arg);  // convert iterator to pointer
 
                 parameter = static_cast<ASTIdentifierNode*>(parameter->sibling);
                 ++arg;
@@ -247,21 +236,15 @@ struct CodeEmitter
         llvm::BasicBlock* entry = llvm::BasicBlock::Create(llvm_ctxt, "entry", function);
         ir_builder.SetInsertPoint(entry);
 
-        emit_statement_list(statement_list, function_symbols);
-
-        delete[] function_symbols.values;
+        emit_statement_list(statement_list);
 
         llvm::verifyFunction(*function);
     }
 };
 
-void output_ast(AST& ast, Array<SymbolData> symbols)
+void output_ast(AST& ast)
 {
     CodeEmitter emitter;
-
-    SymbolTable symbol_table;
-    symbol_table.symbol_data = symbols;
-    symbol_table.values = new llvm::Value*[symbols.length];
 
     ASTNode* node = ast.start;
     while (node)
@@ -269,7 +252,7 @@ void output_ast(AST& ast, Array<SymbolData> symbols)
         switch (node->type)
         {
             case ASTNodeType::FunctionDef:
-                emitter.generate_function_def(node, symbol_table);
+                emitter.generate_function_def(node);
                 break;
             default:
                 assert(false);  // unsupported
@@ -277,8 +260,6 @@ void output_ast(AST& ast, Array<SymbolData> symbols)
 
         node = node->sibling;
     }
-
-    delete[] symbol_table.values;
     
     emitter.module->print(llvm::errs(), nullptr);
 }

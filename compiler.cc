@@ -34,13 +34,13 @@ int main(int argc, char **argv)
     // generate AST
     AST ast;
 
-    Array<SymbolData> symbols;
-    symbols.max_length = MAX_SYMBOLS;
-    symbols.data = new SymbolData[MAX_SYMBOLS];
+    Scope global_scope;
+    global_scope.symbols.max_length = MAX_SYMBOLS;
+    global_scope.symbols.data = new SymbolData[MAX_SYMBOLS];
 
-    parse(tokens, ast, symbols);
+    parse(tokens, ast, global_scope);
 
     set_ast_type_info(ast);
 
-    output_ast(ast, symbols);
+    output_ast(ast);
 }

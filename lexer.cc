@@ -6,7 +6,7 @@
 
 #include <iostream>
 
-void SubString::print()
+void SubString::print() const
 {
     for (uint32_t i = 0; i < len; ++i)
     {

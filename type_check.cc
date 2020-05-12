@@ -35,17 +35,17 @@ static void set_binop_type_info(ASTBinOpNode* binop, uint32_t lhs_type, uint32_t
     }
 }
 
-static uint32_t set_expr_type_info(ASTNode* expr, Array<SymbolData> symbols)
+static uint32_t set_expr_type_info(ASTNode* expr)
 {
     switch (expr->type)
     {
         case ASTNodeType::Number:
             return TypeId::U32;
         case ASTNodeType::Identifier:
-            return symbols[static_cast<ASTIdentifierNode*>(expr)->symbol_id].type_id;
+            return static_cast<ASTIdentifierNode*>(expr)->symbol->type_id;
         case ASTNodeType::BinaryOperator: {
-            uint32_t lhs_type = set_expr_type_info(expr->child, symbols);
-            uint32_t rhs_type = set_expr_type_info(expr->child->sibling, symbols);
+            uint32_t lhs_type = set_expr_type_info(expr->child);
+            uint32_t rhs_type = set_expr_type_info(expr->child->sibling);
 
             set_binop_type_info(static_cast<ASTBinOpNode*>(expr), lhs_type, rhs_type);
 
@@ -56,24 +56,24 @@ static uint32_t set_expr_type_info(ASTNode* expr, Array<SymbolData> symbols)
     }
 }
 
-static void set_statement_type_info(ASTNode* statement, Array<SymbolData> symbols)
+static void set_statement_type_info(ASTNode* statement)
 {
     // TODO: need proper error messages here - can't do that without tokens currently
     switch (statement->type)
     {
         case ASTNodeType::VariableDef:
         case ASTNodeType::Assignment:
-            assert(symbols[static_cast<ASTIdentifierNode*>(statement)->symbol_id].type_id == set_expr_type_info(statement->child, symbols));
+            assert(static_cast<ASTIdentifierNode*>(statement)->symbol->type_id == set_expr_type_info(statement->child));
             break;
         case ASTNodeType::Return:
             if (statement->child)
             {
-                set_expr_type_info(statement->child, symbols);
+                set_expr_type_info(statement->child);
             }
             break;
         case ASTNodeType::If:
         case ASTNodeType::While:
-            assert(set_expr_type_info(statement->child, symbols) == TypeId::Bool);
+            assert(set_expr_type_info(statement->child) == TypeId::Bool);
             set_statement_list_type_info(statement->child->sibling);
             break;
         default:
@@ -87,7 +87,7 @@ static void set_statement_list_type_info(ASTNode* statement_list)
     ASTNode* statement = statement_list->child;
     while (statement)
     {
-        set_statement_type_info(statement, static_cast<ASTStatementListNode*>(statement_list)->symbols);
+        set_statement_type_info(statement);
         statement = statement->sibling;
     }
 }

@@ -51,7 +51,18 @@ constexpr uint32_t MAX_SYMBOLS = 1024;
 struct SymbolData
 {
     SubString name;
-    uint32_t type_id;
+    uint32_t type_id = TypeId::Invalid;
+
+    void* codegen_data = nullptr;
+};
+
+struct Scope
+{
+    Scope* parent = nullptr;
+    Array<SymbolData> symbols;
+
+    SymbolData* push(SubString name, uint32_t type_id);
+    SymbolData* lookup_symbol(SubString name);
 };
 
 struct ASTNode
@@ -91,21 +102,21 @@ struct ASTNumberNode: public ASTNode
 
 struct ASTIdentifierNode: public ASTNode
 {
-    uint32_t symbol_id;
+    SymbolData* symbol;
 
-    ASTIdentifierNode(uint32_t type, uint32_t symbol_id_)
+    ASTIdentifierNode(uint32_t type, SymbolData* symbol_)
         :ASTNode(type),
-        symbol_id(symbol_id_)
+        symbol(symbol_)
     {}
 };
 
 struct ASTStatementListNode: public ASTNode
 {
-    Array<SymbolData> symbols;
+    Scope scope;
 
-    ASTStatementListNode(Array<SymbolData> symbols_)
+    ASTStatementListNode(Scope scope_)
         :ASTNode(ASTNodeType::StatementList),
-        symbols(symbols_)
+        scope(scope_)
     {}
 };
 
@@ -126,5 +137,5 @@ struct AST
     void end_children(ASTNode* node);
 };
 
-void parse(const std::vector<Token>& tokens, AST& ast, Array<SymbolData>& symbols);
+void parse(const std::vector<Token>& tokens, AST& ast, Scope& global_scope);
 
