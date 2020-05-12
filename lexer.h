@@ -13,6 +13,7 @@ namespace TokenType
         TypeName,
         Number, 
         If,
+        Else,
         While,
         
         Invalid,

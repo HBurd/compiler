@@ -224,6 +224,51 @@ static void parse_expression(TokenReader& tokens, AST& ast, Array<SymbolData>& s
     assert(OPERATOR_PRECEDENCE[tokens.peek().type] < precedence);
 }
 
+static void parse_if_or_while(TokenReader& tokens, AST& ast, Array<SymbolData>& symbols)
+{
+    // we need to differentiate if and while to determine if an else can follow
+    bool is_if = false;
+
+    uint32_t statement_node_type;
+    if (tokens.peek().type == TokenType::If)
+    {
+        statement_node_type = ASTNodeType::If;
+        is_if = true;
+    }
+    else if (tokens.peek().type == TokenType::While)
+    {
+        statement_node_type = ASTNodeType::While;
+    }
+    else
+    {
+        assert(false);
+    }
+
+    ASTNode* statement_node = ast.push(statement_node_type);
+    ast.begin_children(statement_node);
+
+    tokens.advance();
+
+    ASTNode* condition_node;
+    parse_expression(tokens, ast, symbols, 1, &condition_node);
+    ast.attach(condition_node);
+
+    assert_at_token(tokens.peek().type == '{', "Expected block following if", tokens.peek());
+    parse_statement_list(tokens, ast, symbols);
+
+    if (is_if)
+    {
+        // check for else
+        if (tokens.peek().type == TokenType::Else)
+        {
+            tokens.advance();
+            parse_statement_list(tokens, ast, symbols);
+        }
+    }
+
+    ast.end_children(statement_node);
+}
+
 static void parse_statement(TokenReader& tokens, AST& ast, Array<SymbolData>& symbols)
 {
     if (tokens.peek().type == TokenType::Name && tokens.peek(1).type == ':')
@@ -258,32 +303,7 @@ static void parse_statement(TokenReader& tokens, AST& ast, Array<SymbolData>& sy
     }
     else if (tokens.peek().type == TokenType::If || tokens.peek().type == TokenType::While)
     {
-        uint32_t statement_node_type;
-        if (tokens.peek().type == TokenType::If)
-        {
-            statement_node_type = ASTNodeType::If;
-        }
-        else if (tokens.peek().type == TokenType::While)
-        {
-            statement_node_type = ASTNodeType::While;
-        }
-        else
-        {
-            assert(false);
-        }
-        ASTNode* statement_node = ast.push(statement_node_type);
-        ast.begin_children(statement_node);
-
-        tokens.advance();
-
-        ASTNode* condition_node;
-        parse_expression(tokens, ast, symbols, 1, &condition_node);
-        ast.attach(condition_node);
-
-        assert_at_token(tokens.peek().type == '{', "Expected block following if", tokens.peek());
-        parse_statement_list(tokens, ast, symbols);
-
-        ast.end_children(statement_node);
+        parse_if_or_while(tokens, ast, symbols);
     }
     else
     {

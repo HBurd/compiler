@@ -8,6 +8,10 @@ main: (x: i32, y: i32)
         }
         return 1;
     }
+    else
+    {
+        y = x + x;
+    }
 
     return 0;
 }

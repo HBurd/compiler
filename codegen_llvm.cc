@@ -156,6 +156,13 @@ struct CodeEmitter
                 ir_builder.SetInsertPoint(then_block);
                 emit_statement_list(statement->child->sibling, symbols);
                 ir_builder.CreateBr(fi_block);
+                if (statement->child->sibling->sibling)
+                {
+                    // this is the statement list corresponding to the else block
+                    ir_builder.SetInsertPoint(else_block);
+                    emit_statement_list(statement->child->sibling->sibling, symbols);
+                    ir_builder.CreateBr(fi_block);
+                }
                 ir_builder.SetInsertPoint(fi_block);
             } break;
             case ASTNodeType::While:

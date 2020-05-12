@@ -112,6 +112,10 @@ static Token get_keyword_token(SubString word)
     {
         result.type = TokenType::If;
     }
+    else if (word == "else")
+    {
+        result.type = TokenType::Else;
+    }
     else if (word == "while")
     {
         result.type = TokenType::While;
