@@ -148,18 +148,30 @@ struct CodeEmitter
                 llvm::Function* function = ir_builder.GetInsertBlock()->getParent();
                 llvm::BasicBlock* then_block = llvm::BasicBlock::Create(llvm_ctxt, "then", function);
                 llvm::BasicBlock* else_block = llvm::BasicBlock::Create(llvm_ctxt, "else", function);
-                llvm::BasicBlock* fi_block = llvm::BasicBlock::Create(llvm_ctxt, "fi", function);
+                llvm::BasicBlock* fi_block = llvm::BasicBlock::Create(llvm_ctxt, "end_if", function);
 
                 llvm::Value* condition_value = emit_subexpr(statement->child, ANONYMOUS_VALUE, symbols);
                 ir_builder.CreateCondBr(condition_value, then_block, else_block);
 
                 ir_builder.SetInsertPoint(then_block);
                 emit_statement_list(statement->child->sibling, symbols);
+                ir_builder.CreateBr(fi_block);
                 ir_builder.SetInsertPoint(fi_block);
             } break;
             case ASTNodeType::While:
             {
+                llvm::Function* function = ir_builder.GetInsertBlock()->getParent();
+                llvm::BasicBlock* do_block = llvm::BasicBlock::Create(llvm_ctxt, "do", function);
+                llvm::BasicBlock* fi_block = llvm::BasicBlock::Create(llvm_ctxt, "end_do", function);
+
                 llvm::Value* condition_value = emit_subexpr(statement->child, ANONYMOUS_VALUE, symbols);
+                ir_builder.CreateCondBr(condition_value, do_block, fi_block);
+
+                ir_builder.SetInsertPoint(do_block);
+                emit_statement_list(statement->child->sibling, symbols);
+                llvm::Value* end_condition_value = emit_subexpr(statement->child, ANONYMOUS_VALUE, symbols);
+                ir_builder.CreateCondBr(end_condition_value, do_block, fi_block);
+                ir_builder.SetInsertPoint(fi_block);
             } break;
             default:
                 assert(false && "Invalid syntax tree - expected a statement");
