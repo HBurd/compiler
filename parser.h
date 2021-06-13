@@ -2,6 +2,7 @@
 
 #include "lexer.h"
 #include "util.h"
+#include "codegen_llvm.h"
 
 namespace ASTNodeType
 {
@@ -53,7 +54,7 @@ struct SymbolData
     SubString name;
     uint32_t type_id = TypeId::Invalid;
 
-    void* codegen_data = nullptr;
+    SymbolData_Codegen codegen_data = nullptr;
 };
 
 struct Scope

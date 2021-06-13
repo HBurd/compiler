@@ -1,3 +1,4 @@
+#include "codegen.h"
 #include "codegen_llvm.h"
 
 #include <llvm/ADT/StringRef.h>
@@ -38,6 +39,15 @@ static llvm::IntegerType* get_integer_type(uint32_t type_id, llvm::LLVMContext& 
             return nullptr;
     }
 }
+
+struct PhiNode
+{
+    llvm::Value* original_value = nullptr;
+    llvm::Value* new_value = nullptr;
+    SymbolData* symbol = nullptr;
+    llvm::PHINode* llvm_phi = nullptr;
+    PhiNode* parent_phi = nullptr;
+};
 
 struct CodeEmitter
 {
@@ -98,7 +108,7 @@ struct CodeEmitter
         switch (subexpr->type)
         {
             case ASTNodeType::Identifier:
-                result = (llvm::Value*)static_cast<ASTIdentifierNode*>(subexpr)->symbol->codegen_data;
+                result = (llvm::Value*)static_cast<ASTIdentifierNode*>(subexpr)->symbol->codegen_data->new_value;
                 break;
             case ASTNodeType::Number:
                 // TODO: after type checking the number will actually have a type, so don't hardcode
@@ -111,22 +121,34 @@ struct CodeEmitter
                 assert(false && "Invalid syntax tree - expected a subexpression");
         }
 
-        // TODO: I think this doesn't belong here
-        if (symbol)
-        {
-            symbol->codegen_data = result;
-        }
         return result;
     }
 
-    void emit_statement(ASTNode* statement)
+    void emit_variable_def(ASTIdentifierNode* identifier_node, Array<PhiNode> phi_nodes)
+    {
+        SymbolData* symbol = identifier_node->symbol;
+        PhiNode new_phi;
+        new_phi.symbol = symbol;
+        new_phi.new_value = emit_subexpr(identifier_node->child, symbol);;
+
+        // Note: It is correct to leave original_value as default,
+        // since it should only be set to the value from BEFORE block.
+
+        symbol->codegen_data = phi_nodes.push(new_phi);
+    }
+
+    void emit_statement(ASTNode* statement, Array<PhiNode> phi_nodes)
     {
         switch (statement->type)
         {
             case ASTNodeType::VariableDef:
+            {
+                emit_variable_def(static_cast<ASTIdentifierNode*>(statement), phi_nodes);
+            } break;
             case ASTNodeType::Assignment:
             {
-                emit_subexpr(statement->child, static_cast<ASTIdentifierNode*>(statement)->symbol);
+                SymbolData* symbol = static_cast<ASTIdentifierNode*>(statement)->symbol;
+                symbol->codegen_data->new_value = emit_subexpr(statement->child, symbol);
             } break;
             case ASTNodeType::FunctionDef:
                 // do nothing
@@ -138,47 +160,161 @@ struct CodeEmitter
             } break;
             case ASTNodeType::If:
             {
-                llvm::Function* function = ir_builder.GetInsertBlock()->getParent();
+                bool has_else = (bool)statement->child->sibling->sibling;
+
+                llvm::BasicBlock* before_block = ir_builder.GetInsertBlock();
+                llvm::Function* function = before_block->getParent();
+
                 llvm::BasicBlock* then_block = llvm::BasicBlock::Create(llvm_ctxt, "then", function);
-                llvm::BasicBlock* else_block = llvm::BasicBlock::Create(llvm_ctxt, "else", function);
+                llvm::BasicBlock* else_block = has_else ? llvm::BasicBlock::Create(llvm_ctxt, "else", function) : nullptr;
                 llvm::BasicBlock* fi_block = llvm::BasicBlock::Create(llvm_ctxt, "end_if", function);
+
+                if (!else_block) else_block = fi_block;
 
                 llvm::Value* condition_value = emit_subexpr(statement->child, nullptr);
                 ir_builder.CreateCondBr(condition_value, then_block, else_block);
 
-                ir_builder.SetInsertPoint(then_block);
-                emit_statement_list(statement->child->sibling);
-                ir_builder.CreateBr(fi_block);
-                if (statement->child->sibling->sibling)
+                // Create new phi nodes
+
+                size_t phi_frame_base = phi_nodes.length;
+                ir_builder.SetInsertPoint(fi_block);
+
+                for (size_t i = 0; i < phi_frame_base; ++i)
                 {
-                    // this is the statement list corresponding to the else block
-                    ir_builder.SetInsertPoint(else_block);
-                    emit_statement_list(statement->child->sibling->sibling);
-                    ir_builder.CreateBr(fi_block);
+                    PhiNode* phi = &phi_nodes[i];
+                    PhiNode* new_phi = phi_nodes.push(*phi);
+                    new_phi->original_value = new_phi->new_value;
+                    new_phi->parent_phi = phi;
+                    new_phi->llvm_phi = ir_builder.CreatePHI(get_integer_type(new_phi->symbol->type_id, llvm_ctxt), 2, make_twine(new_phi->symbol->name));
+
+                    // The value of the phi node itself is the new value
+                    // for the symol.
+                    phi->new_value = new_phi->llvm_phi;
+
+                    // Point symbol to new phi node
+                    new_phi->symbol->codegen_data = new_phi;
                 }
+
+                Array<PhiNode> inner_phi_nodes;
+                inner_phi_nodes.data = phi_nodes.data + phi_frame_base;
+                inner_phi_nodes.length = phi_nodes.length - phi_frame_base;
+                inner_phi_nodes.max_length = phi_nodes.max_length - phi_frame_base;
+
+                // Emit then
+
+                ir_builder.SetInsertPoint(then_block);
+                emit_statement_list(statement->child->sibling, inner_phi_nodes);
+                ir_builder.CreateBr(fi_block);
+
+                // Update then block, since it might have changed
+                then_block = ir_builder.GetInsertBlock();
+
+                // Update phi nodes
+                for (PhiNode& phi : inner_phi_nodes)
+                {
+                    phi.llvm_phi->addIncoming(phi.new_value, then_block);
+                    phi.new_value = phi.original_value;
+                }
+
+                if (has_else)
+                {
+                    // Emit else
+                    ir_builder.SetInsertPoint(else_block);
+                    emit_statement_list(statement->child->sibling->sibling, inner_phi_nodes);
+                    ir_builder.CreateBr(fi_block);
+
+                    // Update else block, since it might have changed
+                    else_block = ir_builder.GetInsertBlock();
+
+                    // Update phi nodes
+                    for (PhiNode& phi : inner_phi_nodes)
+                    {
+                        phi.llvm_phi->addIncoming(phi.new_value, else_block);
+                        phi.new_value = phi.original_value;
+                    }
+                }
+                else
+                {
+                    // There is no else block.
+                    for (PhiNode& phi : inner_phi_nodes)
+                    {
+                        phi.llvm_phi->addIncoming(phi.original_value, before_block);
+                    }
+                }
+
+                // Point symbols back to their original phis
+                for (PhiNode& phi : inner_phi_nodes)
+                {
+                    phi.symbol->codegen_data = phi.parent_phi;
+                }
+
                 ir_builder.SetInsertPoint(fi_block);
             } break;
             case ASTNodeType::While:
             {
                 llvm::Function* function = ir_builder.GetInsertBlock()->getParent();
+                llvm::BasicBlock* before_block = ir_builder.GetInsertBlock();
                 llvm::BasicBlock* do_block = llvm::BasicBlock::Create(llvm_ctxt, "do", function);
                 llvm::BasicBlock* fi_block = llvm::BasicBlock::Create(llvm_ctxt, "end_do", function);
 
                 llvm::Value* condition_value = emit_subexpr(statement->child, nullptr);
                 ir_builder.CreateCondBr(condition_value, do_block, fi_block);
 
+                // Create new phi nodes
+
+                size_t phi_frame_base = phi_nodes.length;
                 ir_builder.SetInsertPoint(do_block);
-                emit_statement_list(statement->child->sibling);
+
+                for (size_t i = 0; i < phi_frame_base; ++i)
+                {
+                    PhiNode* phi = &phi_nodes[i];
+                    PhiNode* new_phi = phi_nodes.push(*phi);
+                    new_phi->original_value = new_phi->new_value;
+                    new_phi->parent_phi = phi;
+
+                    // The llvm phi node has to be created up here so that is emitted in the right place
+                    new_phi->llvm_phi = ir_builder.CreatePHI(get_integer_type(new_phi->symbol->type_id, llvm_ctxt), 2, make_twine(new_phi->symbol->name));
+
+                    // Point symbol to new phi node
+                    new_phi->symbol->codegen_data = new_phi;
+                }
+
+                Array<PhiNode> inner_phi_nodes;
+                inner_phi_nodes.data = phi_nodes.data + phi_frame_base;
+                inner_phi_nodes.length = phi_nodes.length - phi_frame_base;
+                inner_phi_nodes.max_length = phi_nodes.max_length - phi_frame_base;
+
+                emit_statement_list(statement->child->sibling, inner_phi_nodes);
+
+                do_block = ir_builder.GetInsertBlock();
+                for (const PhiNode& phi : inner_phi_nodes)
+                {
+                    phi.llvm_phi->addIncoming(phi.original_value, before_block);
+                    phi.llvm_phi->addIncoming(phi.new_value, do_block);
+                }
+
                 llvm::Value* end_condition_value = emit_subexpr(statement->child, nullptr);
                 ir_builder.CreateCondBr(end_condition_value, do_block, fi_block);
+
                 ir_builder.SetInsertPoint(fi_block);
+
+                for (const PhiNode& phi : inner_phi_nodes)
+                {
+                    llvm::PHINode* llvm_phi = ir_builder.CreatePHI(get_integer_type(phi.symbol->type_id, llvm_ctxt), 2, make_twine(phi.symbol->name));
+
+                    llvm_phi->addIncoming(phi.original_value, before_block);
+                    llvm_phi->addIncoming(phi.new_value, do_block);
+
+                    phi.parent_phi->new_value = llvm_phi;
+                    phi.symbol->codegen_data = phi.parent_phi;
+                }
             } break;
             default:
                 assert(false && "Invalid syntax tree - expected a statement");
         }
     }
 
-    void emit_statement_list(ASTNode* statement_list)
+    void emit_statement_list(ASTNode* statement_list, Array<PhiNode> phi_nodes)
     {
         assert(statement_list->type == ASTNodeType::StatementList);
 
@@ -186,7 +322,7 @@ struct CodeEmitter
 
         while(statement)
         {
-            emit_statement(statement);
+            emit_statement(statement, phi_nodes);
             statement = statement->sibling;
         }
     }
@@ -217,6 +353,11 @@ struct CodeEmitter
             module
         );
 
+        Array<PhiNode> phi_nodes;
+        phi_nodes.data = new PhiNode[MAX_SYMBOLS];
+        phi_nodes.length = 0;
+        phi_nodes.max_length = MAX_SYMBOLS;
+
         // set function arg names and values
         {
             ASTIdentifierNode* parameter = static_cast<ASTIdentifierNode*>(function_def_node->child->child);
@@ -226,7 +367,12 @@ struct CodeEmitter
                 assert(arg != function->arg_end());
 
                 arg->setName(make_twine(parameter->symbol->name));
-                parameter->symbol->codegen_data = &(*arg);  // convert iterator to pointer
+
+                PhiNode new_phi;
+                new_phi.symbol = parameter->symbol;
+                new_phi.new_value = &(*arg);    // convert iterator to pointer
+
+                parameter->symbol->codegen_data = phi_nodes.push(new_phi);
 
                 parameter = static_cast<ASTIdentifierNode*>(parameter->sibling);
                 ++arg;
@@ -236,7 +382,7 @@ struct CodeEmitter
         llvm::BasicBlock* entry = llvm::BasicBlock::Create(llvm_ctxt, "entry", function);
         ir_builder.SetInsertPoint(entry);
 
-        emit_statement_list(statement_list);
+        emit_statement_list(statement_list, phi_nodes);
 
         llvm::verifyFunction(*function);
     }
@@ -260,6 +406,8 @@ void output_ast(AST& ast)
 
         node = node->sibling;
     }
-    
+
+    llvm::verifyModule(*emitter.module);
+
     emitter.module->print(llvm::errs(), nullptr);
 }

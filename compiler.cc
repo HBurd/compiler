@@ -8,7 +8,7 @@
 #include "lexer.h"
 #include "parser.h"
 #include "type_check.h"
-#include "codegen_llvm.h"
+#include "codegen.h"
 
 int main(int argc, char **argv)
 {
@@ -43,4 +43,6 @@ int main(int argc, char **argv)
     set_ast_type_info(ast);
 
     output_ast(ast);
+
+    return 0;
 }
