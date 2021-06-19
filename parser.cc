@@ -343,6 +343,10 @@ static void parse_parameter_list(TokenReader& tokens, AST& ast, Scope& scope)
             tokens.advance(3);
         } while(tokens.peek().type == ',');
     }
+    else
+    {
+        tokens.advance();
+    }
 
     assert_at_token(tokens.peek().type == ')', "Expected ')'", tokens.peek());
     tokens.advance();
@@ -409,7 +413,8 @@ static void parse_def(TokenReader& tokens, AST& ast, Scope& scope)
     {
         assert(false && "type inference not yet supported");
     }
-    else if (tokens.peek(2).type == TokenType::TypeName) // This is a variable def
+    else if (tokens.peek(2).type == TokenType::TypeName
+             && tokens.peek(3).type == '=') // This is a variable def
     {
         // the symbol has to be set later because it's not in the scope yet
         ASTNode* variable_def_node = ast.push(ASTIdentifierNode(ASTNodeType::VariableDef, nullptr));

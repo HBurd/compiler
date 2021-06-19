@@ -124,7 +124,7 @@ struct CodeEmitter
         return result;
     }
 
-    void emit_variable_def(ASTIdentifierNode* identifier_node, Array<PhiNode> phi_nodes)
+    void emit_variable_def(ASTIdentifierNode* identifier_node, Array<PhiNode>* phi_nodes)
     {
         SymbolData* symbol = identifier_node->symbol;
         PhiNode new_phi;
@@ -134,10 +134,10 @@ struct CodeEmitter
         // Note: It is correct to leave original_value as default,
         // since it should only be set to the value from BEFORE block.
 
-        symbol->codegen_data = phi_nodes.push(new_phi);
+        symbol->codegen_data = phi_nodes->push(new_phi);
     }
 
-    void emit_statement(ASTNode* statement, Array<PhiNode> phi_nodes)
+    void emit_statement(ASTNode* statement, Array<PhiNode>* phi_nodes)
     {
         switch (statement->type)
         {
@@ -176,13 +176,13 @@ struct CodeEmitter
 
                 // Create new phi nodes
 
-                size_t phi_frame_base = phi_nodes.length;
+                size_t phi_frame_base = phi_nodes->length;
                 ir_builder.SetInsertPoint(fi_block);
 
                 for (size_t i = 0; i < phi_frame_base; ++i)
                 {
-                    PhiNode* phi = &phi_nodes[i];
-                    PhiNode* new_phi = phi_nodes.push(*phi);
+                    PhiNode* phi = &(*phi_nodes)[i];
+                    PhiNode* new_phi = phi_nodes->push(*phi);
                     new_phi->original_value = new_phi->new_value;
                     new_phi->parent_phi = phi;
                     new_phi->llvm_phi = ir_builder.CreatePHI(get_integer_type(new_phi->symbol->type_id, llvm_ctxt), 2, make_twine(new_phi->symbol->name));
@@ -196,14 +196,14 @@ struct CodeEmitter
                 }
 
                 Array<PhiNode> inner_phi_nodes;
-                inner_phi_nodes.data = phi_nodes.data + phi_frame_base;
-                inner_phi_nodes.length = phi_nodes.length - phi_frame_base;
-                inner_phi_nodes.max_length = phi_nodes.max_length - phi_frame_base;
+                inner_phi_nodes.data = phi_nodes->data + phi_frame_base;
+                inner_phi_nodes.length = phi_nodes->length - phi_frame_base;
+                inner_phi_nodes.max_length = phi_nodes->max_length - phi_frame_base;
 
                 // Emit then
 
                 ir_builder.SetInsertPoint(then_block);
-                emit_statement_list(statement->child->sibling, inner_phi_nodes);
+                emit_statement_list(statement->child->sibling, &inner_phi_nodes);
                 ir_builder.CreateBr(fi_block);
 
                 // Update then block, since it might have changed
@@ -220,7 +220,7 @@ struct CodeEmitter
                 {
                     // Emit else
                     ir_builder.SetInsertPoint(else_block);
-                    emit_statement_list(statement->child->sibling->sibling, inner_phi_nodes);
+                    emit_statement_list(statement->child->sibling->sibling, &inner_phi_nodes);
                     ir_builder.CreateBr(fi_block);
 
                     // Update else block, since it might have changed
@@ -262,29 +262,30 @@ struct CodeEmitter
 
                 // Create new phi nodes
 
-                size_t phi_frame_base = phi_nodes.length;
+                size_t phi_frame_base = phi_nodes->length;
                 ir_builder.SetInsertPoint(do_block);
 
                 for (size_t i = 0; i < phi_frame_base; ++i)
                 {
-                    PhiNode* phi = &phi_nodes[i];
-                    PhiNode* new_phi = phi_nodes.push(*phi);
+                    PhiNode* phi = &(*phi_nodes)[i];
+                    PhiNode* new_phi = phi_nodes->push(*phi);
                     new_phi->original_value = new_phi->new_value;
                     new_phi->parent_phi = phi;
 
                     // The llvm phi node has to be created up here so that is emitted in the right place
                     new_phi->llvm_phi = ir_builder.CreatePHI(get_integer_type(new_phi->symbol->type_id, llvm_ctxt), 2, make_twine(new_phi->symbol->name));
+                    new_phi->new_value = new_phi->llvm_phi;
 
                     // Point symbol to new phi node
                     new_phi->symbol->codegen_data = new_phi;
                 }
 
                 Array<PhiNode> inner_phi_nodes;
-                inner_phi_nodes.data = phi_nodes.data + phi_frame_base;
-                inner_phi_nodes.length = phi_nodes.length - phi_frame_base;
-                inner_phi_nodes.max_length = phi_nodes.max_length - phi_frame_base;
+                inner_phi_nodes.data = phi_nodes->data + phi_frame_base;
+                inner_phi_nodes.length = phi_nodes->length - phi_frame_base;
+                inner_phi_nodes.max_length = phi_nodes->max_length - phi_frame_base;
 
-                emit_statement_list(statement->child->sibling, inner_phi_nodes);
+                emit_statement_list(statement->child->sibling, &inner_phi_nodes);
 
                 do_block = ir_builder.GetInsertBlock();
                 for (const PhiNode& phi : inner_phi_nodes)
@@ -314,7 +315,7 @@ struct CodeEmitter
         }
     }
 
-    void emit_statement_list(ASTNode* statement_list, Array<PhiNode> phi_nodes)
+    void emit_statement_list(ASTNode* statement_list, Array<PhiNode>* phi_nodes)
     {
         assert(statement_list->type == ASTNodeType::StatementList);
 
@@ -382,7 +383,7 @@ struct CodeEmitter
         llvm::BasicBlock* entry = llvm::BasicBlock::Create(llvm_ctxt, "entry", function);
         ir_builder.SetInsertPoint(entry);
 
-        emit_statement_list(statement_list, phi_nodes);
+        emit_statement_list(statement_list, &phi_nodes);
 
         llvm::verifyFunction(*function);
     }
