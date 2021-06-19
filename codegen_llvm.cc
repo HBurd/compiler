@@ -203,7 +203,7 @@ struct CodeEmitter
                 // Emit then
 
                 ir_builder.SetInsertPoint(then_block);
-                emit_statement_list(statement->child->sibling, &inner_phi_nodes);
+                emit_statement_list(statement->child->sibling, inner_phi_nodes);
                 ir_builder.CreateBr(fi_block);
 
                 // Update then block, since it might have changed
@@ -220,7 +220,7 @@ struct CodeEmitter
                 {
                     // Emit else
                     ir_builder.SetInsertPoint(else_block);
-                    emit_statement_list(statement->child->sibling->sibling, &inner_phi_nodes);
+                    emit_statement_list(statement->child->sibling->sibling, inner_phi_nodes);
                     ir_builder.CreateBr(fi_block);
 
                     // Update else block, since it might have changed
@@ -285,7 +285,7 @@ struct CodeEmitter
                 inner_phi_nodes.length = phi_nodes->length - phi_frame_base;
                 inner_phi_nodes.max_length = phi_nodes->max_length - phi_frame_base;
 
-                emit_statement_list(statement->child->sibling, &inner_phi_nodes);
+                emit_statement_list(statement->child->sibling, inner_phi_nodes);
 
                 do_block = ir_builder.GetInsertBlock();
                 for (const PhiNode& phi : inner_phi_nodes)
@@ -315,7 +315,9 @@ struct CodeEmitter
         }
     }
 
-    void emit_statement_list(ASTNode* statement_list, Array<PhiNode>* phi_nodes)
+    // Takes phi_nodes by value because we don't want any new symbols propogating back
+    // to the outer scope
+    void emit_statement_list(ASTNode* statement_list, Array<PhiNode> phi_nodes)
     {
         assert(statement_list->type == ASTNodeType::StatementList);
 
@@ -323,7 +325,7 @@ struct CodeEmitter
 
         while(statement)
         {
-            emit_statement(statement, phi_nodes);
+            emit_statement(statement, &phi_nodes);
             statement = statement->sibling;
         }
     }
@@ -383,7 +385,7 @@ struct CodeEmitter
         llvm::BasicBlock* entry = llvm::BasicBlock::Create(llvm_ctxt, "entry", function);
         ir_builder.SetInsertPoint(entry);
 
-        emit_statement_list(statement_list, &phi_nodes);
+        emit_statement_list(statement_list, phi_nodes);
 
         llvm::verifyFunction(*function);
     }
