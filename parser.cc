@@ -188,7 +188,10 @@ static ASTNode* parse_operator(TokenReader& tokens, AST& ast, Scope& scope, ASTN
     return lhs;
 }
 
-// We stick expressions on the AST in RPN to make left to right precedence easier
+// Creates a subexpression consisting of operators of precedence >= precedence,
+// starting at the initial position of the token reader.
+// Returns the subexpression once the token reader has advanced onto a lower
+// precedence operator.
 static ASTNode* parse_expression(TokenReader& tokens, AST& ast, Scope& scope, uint32_t precedence)
 {
     // Stick a subexpression on the AST, then advance onto an operator or terminator.
@@ -224,11 +227,15 @@ static ASTNode* parse_expression(TokenReader& tokens, AST& ast, Scope& scope, ui
     }
 
     // Now we are sitting on an operator or terminator.
-    // Result is the lhs of that operator.
 
     while (OPERATOR_PRECEDENCE[tokens.peek().type] >= precedence)
     {
+        // Result is the LHS of the current operator,
+        // so construct the operator node.
         result = parse_operator(tokens, ast, scope, result);
+
+        // Now result is the result of the operation.
+        // Iterate, since it may be the LHS of the next operator.
     }
 
     return result;
