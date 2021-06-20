@@ -162,42 +162,30 @@ static void parse_statement_list(TokenReader& tokens, AST& ast, Scope& scope);
 
 static ASTNode* parse_expression(TokenReader& tokens, AST& ast, Scope& scope, uint32_t precedence);
 
-static ASTNode* parse_operator(TokenReader& tokens, AST& ast, Scope& scope, ASTNode* lhs, uint32_t precedence)
+static ASTNode* parse_operator(TokenReader& tokens, AST& ast, Scope& scope, ASTNode* lhs)
 {
     uint32_t op_type = tokens.peek().type;
+    uint32_t precedence = OPERATOR_PRECEDENCE[op_type];
 
-    // Recurse until precedence matches that of the current operator
-    if (OPERATOR_PRECEDENCE[op_type] > precedence)
+    do
     {
-        return parse_operator(tokens, ast, scope, lhs, precedence + 1);
-    }
-    else if (OPERATOR_PRECEDENCE[op_type] == precedence)
-    {
-        do
-        {
-            tokens.advance();
-            ASTNode* rhs = parse_expression(tokens, ast, scope, precedence + 1);
+        tokens.advance();
+        ASTNode* rhs = parse_expression(tokens, ast, scope, precedence + 1);
 
-            // We should now be sitting after a precedence + 1 subexpression
-            assert(OPERATOR_PRECEDENCE[tokens.peek().type] <= precedence);
+        // We should now be sitting after a precedence + 1 subexpression
+        assert(OPERATOR_PRECEDENCE[tokens.peek().type] <= precedence);
 
-            ASTNode* op_node = ast.push_orphan(ASTBinOpNode(op_type));
-            op_node->child = lhs;
-            lhs->sibling = rhs;
+        ASTNode* op_node = ast.push_orphan(ASTBinOpNode(op_type));
+        op_node->child = lhs;
+        lhs->sibling = rhs;
 
-            lhs = op_node;
+        lhs = op_node;
 
-            op_type = tokens.peek().type;
+        op_type = tokens.peek().type;
 
-        } while (OPERATOR_PRECEDENCE[op_type] == precedence);
+    } while (OPERATOR_PRECEDENCE[op_type] == precedence);
 
-        return lhs;
-    }
-    else
-    {
-        // This should never happen
-        assert(false);
-    }
+    return lhs;
 }
 
 // We stick expressions on the AST in RPN to make left to right precedence easier
@@ -240,7 +228,7 @@ static ASTNode* parse_expression(TokenReader& tokens, AST& ast, Scope& scope, ui
 
     while (OPERATOR_PRECEDENCE[tokens.peek().type] >= precedence)
     {
-        result = parse_operator(tokens, ast, scope, result, precedence);
+        result = parse_operator(tokens, ast, scope, result);
     }
 
     return result;
