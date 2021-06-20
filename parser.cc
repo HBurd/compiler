@@ -160,9 +160,50 @@ SymbolData* Scope::push(SubString name, uint32_t type_id)
 static void parse_def(TokenReader& tokens, AST& ast, Scope& scope);
 static void parse_statement_list(TokenReader& tokens, AST& ast, Scope& scope);
 
-// We stick expressions on the AST in RPN to make left to right precedence easier
-static ASTNode* parse_expression(TokenReader& tokens, AST& ast, Scope& scope, uint8_t precedence)
+static ASTNode* parse_expression(TokenReader& tokens, AST& ast, Scope& scope, uint32_t precedence);
+
+static ASTNode* parse_operator(TokenReader& tokens, AST& ast, Scope& scope, ASTNode* lhs, uint32_t precedence)
 {
+    uint32_t op_type = tokens.peek().type;
+
+    // Recurse until precedence matches that of the current operator
+    if (OPERATOR_PRECEDENCE[op_type] > precedence)
+    {
+        return parse_operator(tokens, ast, scope, lhs, precedence + 1);
+    }
+    else if (OPERATOR_PRECEDENCE[op_type] == precedence)
+    {
+        do
+        {
+            tokens.advance();
+            ASTNode* rhs = parse_expression(tokens, ast, scope, precedence + 1);
+
+            // We should now be sitting after a precedence + 1 subexpression
+            assert(OPERATOR_PRECEDENCE[tokens.peek().type] <= precedence);
+
+            ASTNode* op_node = ast.push_orphan(ASTBinOpNode(op_type));
+            op_node->child = lhs;
+            lhs->sibling = rhs;
+
+            lhs = op_node;
+
+            op_type = tokens.peek().type;
+
+        } while (OPERATOR_PRECEDENCE[op_type] == precedence);
+
+        return lhs;
+    }
+    else
+    {
+        // This should never happen
+        assert(false);
+    }
+}
+
+// We stick expressions on the AST in RPN to make left to right precedence easier
+static ASTNode* parse_expression(TokenReader& tokens, AST& ast, Scope& scope, uint32_t precedence)
+{
+    // Stick a subexpression on the AST, then advance onto an operator or terminator.
     ASTNode* result;
     if (tokens.peek().type == '(')
     {
@@ -171,65 +212,36 @@ static ASTNode* parse_expression(TokenReader& tokens, AST& ast, Scope& scope, ui
         result = parse_expression(tokens, ast, scope, 1);
 
         assert_at_token(tokens.peek().type == ')', "Missing ')'", tokens.peek());
-        assert_at_token(result, "Empty subexpression", tokens.peek());
 
         tokens.advance();      // move past ')'
     }
-    else if (tokens.peek().type == TokenType::Name || tokens.peek().type == TokenType::Number)
+    else if (tokens.peek().type == TokenType::Name)
     {
-        // recurse until precedence matches that of the next operator
-        if (OPERATOR_PRECEDENCE[tokens.peek(1).type] >= precedence)
-        {
-            // this sticks the subexpr of higher precedence onto the AST
-            result = parse_expression(tokens, ast, scope, precedence + 1);
+        SymbolData* symbol = scope.lookup_symbol(tokens.peek().name);
+        assert_at_token(symbol, "Unknown identifier", tokens.peek());
 
-            // now token_idx is after a precedence + 1 subexpression
+        result = ast.push_orphan(ASTIdentifierNode(ASTNodeType::Identifier, symbol));
 
-            assert(OPERATOR_PRECEDENCE[tokens.peek().type] <= precedence);
+        tokens.advance();
+    }
+    else if (tokens.peek().type == TokenType::Number)
+    {
+        result = ast.push_orphan(ASTNumberNode(tokens.peek().number_value));
 
-            while (OPERATOR_PRECEDENCE[tokens.peek().type] == precedence)
-            {
-                uint32_t op = tokens.peek().type;
-                tokens.advance();
-
-                // now recurse so that the right expression is on the AST
-                ASTNode* right_subexpr = parse_expression(tokens, ast, scope, precedence + 1);
-
-                result->sibling = right_subexpr;
-
-                ASTNode* op_node = ast.push_orphan(ASTBinOpNode(op));
-                op_node->child = result;
-                result = op_node;
-            }
-        }
-        else
-        {
-            switch (tokens.peek().type)
-            {
-                case TokenType::Name: {
-                    SymbolData* symbol = scope.lookup_symbol(tokens.peek().name);
-                    assert_at_token(symbol, "Unknown identifier", tokens.peek());
-
-                    result = ast.push_orphan(ASTIdentifierNode(ASTNodeType::Identifier, symbol));
-                } break;
-                case TokenType::Number:
-                    result = ast.push_orphan(ASTNumberNode(tokens.peek().number_value));
-                    break;
-                default:
-                    assert(false);
-            }
-            tokens.advance();
-        }
+        tokens.advance();
     }
     else
     {
-        fail_at_token("Invalid expression", tokens.peek());
+        fail_at_token("Expected a subexpression", tokens.peek());
     }
 
-    // Note: might be on a precedence zero token here, i.e. not an operator.
-    // Caller must determine if it's a valid terminator for the expression.
+    // Now we are sitting on an operator or terminator.
+    // Result is the lhs of that operator.
 
-    assert(OPERATOR_PRECEDENCE[tokens.peek().type] < precedence);
+    while (OPERATOR_PRECEDENCE[tokens.peek().type] >= precedence)
+    {
+        result = parse_operator(tokens, ast, scope, result, precedence);
+    }
 
     return result;
 }
