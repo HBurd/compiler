@@ -160,34 +160,6 @@ SymbolData* Scope::push(SubString name, uint32_t type_id)
 static void parse_def(TokenReader& tokens, AST& ast, Scope& scope);
 static void parse_statement_list(TokenReader& tokens, AST& ast, Scope& scope);
 
-static ASTNode* parse_expression(TokenReader& tokens, AST& ast, Scope& scope, uint32_t precedence);
-
-static ASTNode* parse_operator(TokenReader& tokens, AST& ast, Scope& scope, ASTNode* lhs)
-{
-    uint32_t op_type = tokens.peek().type;
-    uint32_t precedence = OPERATOR_PRECEDENCE[op_type];
-
-    do
-    {
-        tokens.advance();
-        ASTNode* rhs = parse_expression(tokens, ast, scope, precedence + 1);
-
-        // We should now be sitting after a precedence + 1 subexpression
-        assert(OPERATOR_PRECEDENCE[tokens.peek().type] <= precedence);
-
-        ASTNode* op_node = ast.push_orphan(ASTBinOpNode(op_type));
-        op_node->child = lhs;
-        lhs->sibling = rhs;
-
-        lhs = op_node;
-
-        op_type = tokens.peek().type;
-
-    } while (OPERATOR_PRECEDENCE[op_type] == precedence);
-
-    return lhs;
-}
-
 // Creates a subexpression consisting of operators of precedence >= precedence,
 // starting at the initial position of the token reader.
 // Returns the subexpression once the token reader has advanced onto a lower
@@ -228,14 +200,27 @@ static ASTNode* parse_expression(TokenReader& tokens, AST& ast, Scope& scope, ui
 
     // Now we are sitting on an operator or terminator.
 
-    while (OPERATOR_PRECEDENCE[tokens.peek().type] >= precedence)
+    uint32_t op_type = tokens.peek().type;
+    uint32_t op_precedence = OPERATOR_PRECEDENCE[op_type];
+    while (op_precedence >= precedence)
     {
-        // Result is the LHS of the current operator,
-        // so construct the operator node.
-        result = parse_operator(tokens, ast, scope, result);
+        // Result is the lhs of the current operator.
+        // Now build rhs.
 
-        // Now result is the result of the operation.
-        // Iterate, since it may be the LHS of the next operator.
+        tokens.advance();
+        ASTNode* rhs = parse_expression(tokens, ast, scope, op_precedence + 1);
+
+        // We should now be sitting after an op_precedence + 1 subexpression
+        assert(OPERATOR_PRECEDENCE[tokens.peek().type] <= op_precedence);
+
+        ASTNode* op_node = ast.push_orphan(ASTBinOpNode(op_type));
+        op_node->child = result;
+        result->sibling = rhs;
+
+        result = op_node;
+
+        op_type = tokens.peek().type;
+        op_precedence = OPERATOR_PRECEDENCE[op_type];
     }
 
     return result;
