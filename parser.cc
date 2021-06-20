@@ -24,6 +24,7 @@ const char* AST_NODE_TYPE_NAME[] = {
 };
 
 uint8_t OPERATOR_PRECEDENCE[TokenType::Count] = {
+    ['('] = 50,  // Function call
     ['*'] = 20,
     ['+'] = 10,
     ['-'] = 10,  // TODO: how to differentiate unary and binary
@@ -225,8 +226,8 @@ static ASTNode* parse_expression(TokenReader& tokens, AST& ast, Scope& scope, ui
         fail_at_token("Invalid expression", tokens.peek());
     }
 
-    // Note: maybe be on a precedence zero token here, i.e. not an operator
-    // caller must determine if it's a valid terminator for the expression
+    // Note: might be on a precedence zero token here, i.e. not an operator.
+    // Caller must determine if it's a valid terminator for the expression.
 
     assert(OPERATOR_PRECEDENCE[tokens.peek().type] < precedence);
 
@@ -318,13 +319,15 @@ static void parse_statement(TokenReader& tokens, AST& ast, Scope& scope)
     }
 }
 
-static void parse_parameter_list(TokenReader& tokens, AST& ast, Scope& scope)
+static void parse_parameter_list(TokenReader& tokens, AST& ast, Scope& scope, SymbolData* function_symbol)
 {
     assert_at_token(tokens.peek().type == '(', "Expected '('", tokens.peek());
 
     ASTNode* parameter_list_node = ast.push(ASTNode(ASTNodeType::ParameterList));
 
     ast.begin_children(parameter_list_node);
+
+    uint32_t param_count = 0;
 
     if (tokens.peek(1).type != ')')
     {
@@ -340,6 +343,8 @@ static void parse_parameter_list(TokenReader& tokens, AST& ast, Scope& scope)
 
             ast.push(ASTIdentifierNode(ASTNodeType::FunctionParameter, new_symbol));
 
+            ++param_count;
+
             tokens.advance(3);
         } while(tokens.peek().type == ',');
     }
@@ -352,6 +357,19 @@ static void parse_parameter_list(TokenReader& tokens, AST& ast, Scope& scope)
     tokens.advance();
 
     ast.end_children(parameter_list_node);
+
+    // Add parameter types to function info
+    function_symbol->function_info = (FunctionInfo*) new char[sizeof(FunctionInfo) + 4 * param_count];
+    function_symbol->function_info->param_count = param_count;
+
+    ASTNode* param = (ASTIdentifierNode*)parameter_list_node->child;
+    for (size_t i = 0; i < param_count; ++i, param = param->sibling)
+    {
+        assert(param);
+        assert(param->type == ASTNodeType::FunctionParameter);
+        function_symbol->function_info->param_types[i] = static_cast<ASTIdentifierNode*>(param)->symbol->type_id;
+    }
+    assert(!param);
 }
 
 static void parse_statement_list(TokenReader& tokens, AST& ast, Scope& scope)
@@ -404,7 +422,24 @@ static void parse_def(TokenReader& tokens, AST& ast, Scope& scope)
 
         tokens.advance(2);
 
-        parse_parameter_list(tokens, ast, function_scope);
+        parse_parameter_list(tokens, ast, function_scope, new_symbol);
+
+        if (tokens.peek().type == '-' && tokens.peek(1).type == '>')
+        {
+            assert_at_token(
+                tokens.peek(2).type != TokenType::TypeName,
+                "Expected type name",
+                tokens.peek(2));
+
+            new_symbol->function_info->return_type = tokens.peek(2).type_id;
+
+            tokens.advance(3);
+        }
+        else
+        {
+            new_symbol->function_info->return_type = TypeId::None;
+        }
+
         parse_statement_list(tokens, ast, function_scope);
 
         ast.end_children(function_identifier_node);
@@ -508,5 +543,5 @@ void parse(const std::vector<Token>& tokens, AST& ast, Scope& global_scope)
         }
     }
 
-    //print_ast_node(ast.start, global_scope, 0);
+    print_ast_node(ast.start, global_scope, 0);
 }

@@ -33,6 +33,7 @@ namespace TypeId
     enum
     {
         Invalid,
+        None,
         U8,
         I8,
         U16,
@@ -44,15 +45,26 @@ namespace TypeId
 
         Bool,
 
+        Function,
+
         Count
     };
 }
+
+struct FunctionInfo
+{
+    uint32_t return_type;
+    uint32_t param_count;
+    uint32_t param_types[];
+};
+
 
 constexpr uint32_t MAX_SYMBOLS = 1024;
 struct SymbolData
 {
     SubString name;
     uint32_t type_id = TypeId::Invalid;
+    FunctionInfo* function_info = nullptr;
 
     SymbolData_Codegen codegen_data = nullptr;
 };
