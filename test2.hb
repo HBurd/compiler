@@ -1,7 +1,13 @@
 exit: (code: u32);
 
-main: ()
+exit3: (code: u32)
 {
-    exit(5);
+    exit(code + 3);
+    return;
+}
+
+main: () -> u32
+{
+    exit3(5);
     return 1;
 }

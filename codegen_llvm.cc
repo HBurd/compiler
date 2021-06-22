@@ -19,7 +19,7 @@ static llvm::StringRef make_twine(SubString substr)
     return llvm::StringRef(substr.start, substr.len);
 }
 
-static llvm::IntegerType* get_integer_type(uint32_t type_id, llvm::LLVMContext& llvm_ctxt)
+static llvm::Type* get_type(uint32_t type_id, llvm::LLVMContext& llvm_ctxt)
 {
     switch (type_id)
     {
@@ -35,6 +35,8 @@ static llvm::IntegerType* get_integer_type(uint32_t type_id, llvm::LLVMContext& 
         case TypeId::U64:
         case TypeId::I64:
             return llvm::Type::getInt64Ty(llvm_ctxt);
+        case TypeId::None:
+            return llvm::Type::getVoidTy(llvm_ctxt);
         default:
             return nullptr;
     }
@@ -133,7 +135,7 @@ struct CodeEmitter
                 break;
             case ASTNodeType::Number:
                 // TODO: after type checking the number will actually have a type, so don't hardcode
-                result = llvm::ConstantInt::get(get_integer_type(TypeId::U32, llvm_ctxt), static_cast<ASTNumberNode*>(subexpr)->value);
+                result = llvm::ConstantInt::get(get_type(TypeId::U32, llvm_ctxt), static_cast<ASTNumberNode*>(subexpr)->value);
                 break;
             case ASTNodeType::BinaryOperator:
                 result = emit_binop(static_cast<ASTBinOpNode*>(subexpr), symbol);
@@ -179,8 +181,16 @@ struct CodeEmitter
                 break;
             case ASTNodeType::Return:
             {
-                llvm::Value* ret_value = emit_subexpr(statement->child, nullptr);
-                ir_builder.CreateRet(ret_value);
+                if (statement->child)
+                {
+                    llvm::Value* ret_value = emit_subexpr(statement->child, nullptr);
+                    ir_builder.CreateRet(ret_value);
+                }
+                else
+                {
+                    // Not returning a value;
+                    ir_builder.CreateRetVoid();
+                }
             } break;
             case ASTNodeType::If:
             {
@@ -209,7 +219,7 @@ struct CodeEmitter
                     PhiNode* new_phi = phi_nodes->push(*phi);
                     new_phi->original_value = new_phi->new_value;
                     new_phi->parent_phi = phi;
-                    new_phi->llvm_phi = ir_builder.CreatePHI(get_integer_type(new_phi->symbol->type_id, llvm_ctxt), 2, make_twine(new_phi->symbol->name));
+                    new_phi->llvm_phi = ir_builder.CreatePHI(get_type(new_phi->symbol->type_id, llvm_ctxt), 2, make_twine(new_phi->symbol->name));
 
                     // The value of the phi node itself is the new value
                     // for the symol.
@@ -297,7 +307,7 @@ struct CodeEmitter
                     new_phi->parent_phi = phi;
 
                     // The llvm phi node has to be created up here so that is emitted in the right place
-                    new_phi->llvm_phi = ir_builder.CreatePHI(get_integer_type(new_phi->symbol->type_id, llvm_ctxt), 2, make_twine(new_phi->symbol->name));
+                    new_phi->llvm_phi = ir_builder.CreatePHI(get_type(new_phi->symbol->type_id, llvm_ctxt), 2, make_twine(new_phi->symbol->name));
                     new_phi->new_value = new_phi->llvm_phi;
 
                     // Point symbol to new phi node
@@ -325,7 +335,7 @@ struct CodeEmitter
 
                 for (const PhiNode& phi : inner_phi_nodes)
                 {
-                    llvm::PHINode* llvm_phi = ir_builder.CreatePHI(get_integer_type(phi.symbol->type_id, llvm_ctxt), 2, make_twine(phi.symbol->name));
+                    llvm::PHINode* llvm_phi = ir_builder.CreatePHI(get_type(phi.symbol->type_id, llvm_ctxt), 2, make_twine(phi.symbol->name));
 
                     llvm_phi->addIncoming(phi.original_value, before_block);
                     llvm_phi->addIncoming(phi.new_value, do_block);
@@ -371,12 +381,12 @@ struct CodeEmitter
             ASTNode* parameter = parameter_list->child;
             while (parameter)
             {
-                arg_types.push_back(get_integer_type(static_cast<ASTIdentifierNode*>(parameter)->symbol->type_id, llvm_ctxt));
+                arg_types.push_back(get_type(static_cast<ASTIdentifierNode*>(parameter)->symbol->type_id, llvm_ctxt));
                 parameter = parameter->sibling;
             }
         }
 
-        llvm::FunctionType* function_type = llvm::FunctionType::get(get_integer_type(TypeId::U32, llvm_ctxt), arg_types, false);
+        llvm::FunctionType* function_type = llvm::FunctionType::get(get_type(static_cast<ASTIdentifierNode*>(function_def_node)->symbol->function_info->return_type, llvm_ctxt), arg_types, false);
         llvm::Function* function = llvm::Function::Create(
             function_type,
             llvm::Function::ExternalLinkage,

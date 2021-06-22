@@ -324,12 +324,21 @@ static void parse_statement(TokenReader& tokens, AST& ast, Scope& scope)
     }
     else if (tokens.peek().type == TokenType::Return)
     {
-        ASTNode* return_node = ast.push(ASTNode(ASTNodeType::Return)); // TODO: can only return an expression right now
+        ASTNode* return_node = ast.push(ASTNode(ASTNodeType::Return));
         tokens.advance();
-        return_node->child = parse_expression(tokens, ast, scope, 1);
-        assert_at_token(tokens.peek().type == ';', "Expected ';'", tokens.peek());
 
-        tokens.advance();  // advance past semicolon
+        if (tokens.peek().type == ';')
+        {
+            tokens.advance();  // advance past semicolon
+        }
+        else
+        {
+            // Returning an expression
+            return_node->child = parse_expression(tokens, ast, scope, 1);
+            assert_at_token(tokens.peek().type == ';', "Expected ';'", tokens.peek());
+
+            tokens.advance();  // advance past semicolon
+        }
     }
     else if (tokens.peek().type == TokenType::If || tokens.peek().type == TokenType::While)
     {
@@ -452,7 +461,7 @@ static void parse_def(TokenReader& tokens, AST& ast, Scope& scope)
         if (tokens.peek().type == '-' && tokens.peek(1).type == '>')
         {
             assert_at_token(
-                tokens.peek(2).type != TokenType::TypeName,
+                tokens.peek(2).type == TokenType::TypeName,
                 "Expected type name",
                 tokens.peek(2));
 
