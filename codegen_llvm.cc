@@ -102,6 +102,27 @@ struct CodeEmitter
         return nullptr;
     }
 
+    llvm::Value* emit_call(ASTNode* call_node, SymbolData* symbol)
+    {
+        assert(call_node->type == ASTNodeType::FunctionCall);
+
+        llvm::Function* function = module->getFunction(make_twine(static_cast<ASTIdentifierNode*>(call_node->child)->symbol->name));
+        assert(function && "Unknown function referenced");
+
+        std::vector<llvm::Value*> arg_values;
+
+        ASTNode* arg_node = call_node->child->sibling;
+        while (arg_node)
+        {
+            arg_values.push_back(emit_subexpr(arg_node, nullptr));
+            arg_node = arg_node->sibling;
+        }
+
+        assert((arg_values.size() == function->arg_size()) && "Incorrect number of arguments");
+
+        return ir_builder.CreateCall(function, arg_values, make_twine(symbol->name));
+    }
+
     llvm::Value* emit_subexpr(ASTNode* subexpr, SymbolData* symbol)
     {
         llvm::Value* result;
@@ -116,6 +137,9 @@ struct CodeEmitter
                 break;
             case ASTNodeType::BinaryOperator:
                 result = emit_binop(static_cast<ASTBinOpNode*>(subexpr), symbol);
+                break;
+            case ASTNodeType::FunctionCall:
+                result = emit_call(subexpr, symbol);
                 break;
             default:
                 assert(false && "Invalid syntax tree - expected a subexpression");
@@ -311,11 +335,18 @@ struct CodeEmitter
                 }
             } break;
             default:
-                assert(false && "Invalid syntax tree - expected a statement");
+            {
+                // This must be an expression-statement
+                
+                // Create empty symbol since value is unused
+                // TODO: This is messy
+                SymbolData empty_symbol;
+                emit_subexpr(statement, &empty_symbol);
+            }
         }
     }
 
-    // Takes phi_nodes by value because we don't want any new symbols propogating back
+    // Takes phi_nodes by value because we don't want any new symbols propagating back
     // to the outer scope
     void emit_statement_list(ASTNode* statement_list, Array<PhiNode> phi_nodes)
     {
@@ -334,9 +365,6 @@ struct CodeEmitter
     {
         ASTNode* parameter_list = function_def_node->child;
         assert(parameter_list && parameter_list->type == ASTNodeType::ParameterList);
-
-        ASTStatementListNode* statement_list = static_cast<ASTStatementListNode*>(function_def_node->child->sibling);
-        assert(statement_list && statement_list->type == ASTNodeType::StatementList);
 
         std::vector<llvm::Type*> arg_types;
         {
@@ -382,12 +410,19 @@ struct CodeEmitter
             }
         }
 
-        llvm::BasicBlock* entry = llvm::BasicBlock::Create(llvm_ctxt, "entry", function);
-        ir_builder.SetInsertPoint(entry);
+        ASTStatementListNode* statement_list = static_cast<ASTStatementListNode*>(function_def_node->child->sibling);
 
-        emit_statement_list(statement_list, phi_nodes);
+        if (statement_list)
+        {
+            assert(statement_list->type == ASTNodeType::StatementList);
 
-        llvm::verifyFunction(*function);
+            llvm::BasicBlock* entry = llvm::BasicBlock::Create(llvm_ctxt, "entry", function);
+            ir_builder.SetInsertPoint(entry);
+
+            emit_statement_list(statement_list, phi_nodes);
+
+            llvm::verifyFunction(*function);
+        }
     }
 };
 

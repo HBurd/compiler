@@ -21,6 +21,7 @@ namespace ASTNodeType
         BinaryOperator,
         If,
         While,
+        FunctionCall,
 
         Count
     };

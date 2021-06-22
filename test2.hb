@@ -1,12 +1,7 @@
-main: (y: u32)
-{
-    x: u32 = 0;
-    i: u32 = (1 + 1) * 1 + (1 * 2 + 1) * (2 + 2 * 3) + 1 + (2 + 3);
+exit: (code: u32);
 
-    while i < 15
-    {
-        x = x + 15;
-        i = i + 1;
-    }
-    return x;
+main: ()
+{
+    exit(5);
+    return 1;
 }

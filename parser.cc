@@ -21,6 +21,7 @@ const char* AST_NODE_TYPE_NAME[] = {
     [ASTNodeType::FunctionParameter] = "FunctionParameter",
     [ASTNodeType::If] = "If",
     [ASTNodeType::While] = "While",
+    [ASTNodeType::FunctionCall] = "FunctionCall",
 };
 
 uint8_t OPERATOR_PRECEDENCE[TokenType::Count] = {
@@ -128,17 +129,18 @@ void AST::end_children(ASTNode* node)
 
 SymbolData* Scope::lookup_symbol(SubString name)
 {
-    Scope* scope = this;
-    while(scope)
+    for (uint32_t i = 0; i < symbols.length; ++i)
     {
-        for (uint32_t i = 0; i < symbols.length; ++i)
+        if (symbols[i].name == name)
         {
-            if (symbols[i].name == name)
-            {
-                return &symbols[i];
-            }
+            return &symbols[i];
         }
-        scope = scope->parent;
+    }
+
+    // Symbol wasn't found in the current scope, so search the parent scope
+    if (parent)
+    {
+        return parent->lookup_symbol(name);
     }
     return nullptr;
 }
@@ -208,20 +210,48 @@ static ASTNode* parse_expression(TokenReader& tokens, AST& ast, Scope& scope, ui
         // Now build rhs.
 
         tokens.advance();
-        ASTNode* rhs = parse_expression(tokens, ast, scope, op_precedence + 1);
+
+        if (op_type == '(')
+        {
+            // This is a function call
+
+            ASTNode* arg = result;
+            while (tokens.peek().type != ')')
+            {
+                arg->sibling = parse_expression(tokens, ast, scope, 1);
+                assert_at_token(tokens.peek().type == ',' || tokens.peek().type == ')', "Expected ',' or ')'", tokens.peek());
+
+                arg = arg->sibling;
+            }
+
+            // Advance past ')'
+            tokens.advance();
+
+            ASTNode* function_call_node = ast.push_orphan(ASTNode(ASTNodeType::FunctionCall));
+            function_call_node->child = result;
+            result = function_call_node;
+        }
+        else
+        {
+            // Construct rhs expression
+            result->sibling = parse_expression(tokens, ast, scope, op_precedence + 1);
+
+            ASTNode* op_node = ast.push_orphan(ASTBinOpNode(op_type));
+            op_node->child = result;
+
+            result = op_node;
+        }
 
         // We should now be sitting after an op_precedence + 1 subexpression
         assert(OPERATOR_PRECEDENCE[tokens.peek().type] <= op_precedence);
 
-        ASTNode* op_node = ast.push_orphan(ASTBinOpNode(op_type));
-        op_node->child = result;
-        result->sibling = rhs;
-
-        result = op_node;
-
         op_type = tokens.peek().type;
         op_precedence = OPERATOR_PRECEDENCE[op_type];
     }
+
+    // Subexpression is terminated, either with a lower precedence operator
+    // or a terminator character. If subexpression has ended on a terminator,
+    // the caller must make sure that the terminator is valid.
 
     return result;
 }
@@ -307,7 +337,10 @@ static void parse_statement(TokenReader& tokens, AST& ast, Scope& scope)
     }
     else
     {
-        fail_at_token("Invalid statement", tokens.peek());
+        // Assume this is an expression (e.g. function call)
+        ast.attach(parse_expression(tokens, ast, scope, 1));
+        assert_at_token(tokens.peek().type == ';', "Expected ';'", tokens.peek());
+        tokens.advance();  // advance past semicolon
     }
 }
 
@@ -432,7 +465,15 @@ static void parse_def(TokenReader& tokens, AST& ast, Scope& scope)
             new_symbol->function_info->return_type = TypeId::None;
         }
 
-        parse_statement_list(tokens, ast, function_scope);
+        if (tokens.peek().type == ';')
+        {
+            // This is just a declaration, skip past semicolon
+            tokens.advance();
+        }
+        else
+        {
+            parse_statement_list(tokens, ast, function_scope);
+        }
 
         ast.end_children(function_identifier_node);
     }
@@ -535,5 +576,6 @@ void parse(const std::vector<Token>& tokens, AST& ast, Scope& global_scope)
         }
     }
 
-    print_ast_node(ast.start, global_scope, 0);
+    //print_ast_node(ast.start, global_scope, 0);
+    //print_ast_node(ast.start->sibling, global_scope, 0);
 }

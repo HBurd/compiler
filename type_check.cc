@@ -94,9 +94,13 @@ static void set_statement_list_type_info(ASTNode* statement_list)
 
 void set_ast_type_info(AST& ast)
 {
+    // TODO: This only does one function?
     assert(ast.start->type == ASTNodeType::FunctionDef);
 
     ASTNode* statement_list = ast.start->child->sibling;
 
-    set_statement_list_type_info(statement_list);
+    if (statement_list)
+    {
+        set_statement_list_type_info(statement_list);
+    }
 }
