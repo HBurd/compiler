@@ -70,8 +70,9 @@ struct CodeEmitter
 
     llvm::Value* emit_binop(ASTBinOpNode* subexpr, SymbolData* symbol)
     {
-        llvm::Value* lhs = emit_subexpr(subexpr->lhs(), nullptr);
-        llvm::Value* rhs = emit_subexpr(subexpr->rhs(), nullptr);
+        ASTNode* operand = subexpr->child;
+        llvm::Value* lhs = emit_subexpr(operand, nullptr);
+        llvm::Value* rhs = emit_subexpr(operand->sibling, nullptr);
 
         SubString value_name;
         if (symbol)
@@ -359,18 +360,30 @@ struct CodeEmitter
     // to the outer scope
     void emit_statement_list(ASTNode* statement_list, Array<PhiNode> phi_nodes)
     {
-        for (ASTNode* statement : *statement_list)
+        assert(statement_list->type == ASTNodeType::StatementList);
+
+        ASTNode* statement = statement_list->child;
+
+        while(statement)
         {
             emit_statement(statement, &phi_nodes);
+            statement = statement->sibling;
         }
     }
 
-    void generate_function_def(ASTFunctionDefNode* function_def_node)
+    void generate_function_def(ASTNode* function_def_node)
     {
+        ASTNode* parameter_list = function_def_node->child;
+        assert(parameter_list && parameter_list->type == ASTNodeType::ParameterList);
+
         std::vector<llvm::Type*> arg_types;
-        for (ASTIdentifierNode* parameter : *function_def_node->parameters())
         {
-            arg_types.push_back(get_type(static_cast<ASTIdentifierNode*>(parameter)->symbol->type_id, llvm_ctxt));
+            ASTNode* parameter = parameter_list->child;
+            while (parameter)
+            {
+                arg_types.push_back(get_type(static_cast<ASTIdentifierNode*>(parameter)->symbol->type_id, llvm_ctxt));
+                parameter = parameter->sibling;
+            }
         }
 
         llvm::FunctionType* function_type = llvm::FunctionType::get(get_type(static_cast<ASTIdentifierNode*>(function_def_node)->symbol->function_info->return_type, llvm_ctxt), arg_types, false);
@@ -388,8 +401,9 @@ struct CodeEmitter
 
         // set function arg names and values
         {
+            ASTIdentifierNode* parameter = static_cast<ASTIdentifierNode*>(function_def_node->child->child);
             auto arg = function->arg_begin();
-            for (ASTIdentifierNode* parameter : *function_def_node->parameters())
+            while (parameter)
             {
                 assert(arg != function->arg_end());
 
@@ -401,16 +415,21 @@ struct CodeEmitter
 
                 parameter->symbol->codegen_data = phi_nodes.push(new_phi);
 
+                parameter = static_cast<ASTIdentifierNode*>(parameter->sibling);
                 ++arg;
             }
         }
 
-        if (function_def_node->body())
+        ASTStatementListNode* statement_list = static_cast<ASTStatementListNode*>(function_def_node->child->sibling);
+
+        if (statement_list)
         {
+            assert(statement_list->type == ASTNodeType::StatementList);
+
             llvm::BasicBlock* entry = llvm::BasicBlock::Create(llvm_ctxt, "entry", function);
             ir_builder.SetInsertPoint(entry);
 
-            emit_statement_list(function_def_node->body(), phi_nodes);
+            emit_statement_list(statement_list, phi_nodes);
 
             llvm::verifyFunction(*function);
         }
@@ -427,7 +446,7 @@ void output_ast(AST& ast)
         switch (node->type)
         {
             case ASTNodeType::FunctionDef:
-                emitter.generate_function_def(static_cast<ASTFunctionDefNode*>(node));
+                emitter.generate_function_def(node);
                 break;
             default:
                 assert(false);  // unsupported
