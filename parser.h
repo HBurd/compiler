@@ -3,6 +3,7 @@
 #include "lexer.h"
 #include "util.h"
 #include "codegen_llvm.h"
+#include <cassert>
 
 namespace ASTNodeType
 {
@@ -79,6 +80,49 @@ struct Scope
     SymbolData* lookup_symbol(SubString name);
 };
 
+template <typename T>
+struct ASTIterator
+{
+    T* node;
+
+    ASTIterator(T* node_) : node(node_) {}
+
+    T* operator*()
+    {
+        return node;
+    }
+
+    const T* operator*() const
+    {
+        return node;
+    }
+
+    // Prefix increment
+    ASTIterator& operator++()
+    {
+        node = static_cast<T*>(node->sibling);
+        return *this;
+    }
+
+    // Postfix increment
+    ASTIterator operator++(int) const
+    {
+        ASTIterator new_it = *this;
+        new_it.node = node->sibling;
+        return new_it;
+    }
+
+    bool operator==(const ASTIterator& rhs) const
+    {
+        return node == rhs.node;
+    }
+
+    bool operator!=(const ASTIterator& rhs) const
+    {
+        return node != rhs.node;
+    }
+};
+
 struct ASTNode
 {
     uint32_t type = ASTNodeType::Invalid;
@@ -87,6 +131,16 @@ struct ASTNode
 
     ASTNode() = default;
     ASTNode(uint32_t type_): type(type_) {}
+
+    ASTIterator<ASTNode> begin()
+    {
+        return child;
+    }
+
+    ASTIterator<ASTNode> end()
+    {
+        return nullptr;
+    }
 };
 
 struct ASTBinOpNode : public ASTNode
@@ -102,6 +156,9 @@ struct ASTBinOpNode : public ASTNode
         :ASTNode(ASTNodeType::BinaryOperator),
         op(op_)
     {}
+
+    ASTNode* lhs() { return child; }
+    ASTNode* rhs() { return child->sibling; }
 };
 
 struct ASTNumberNode: public ASTNode
@@ -124,6 +181,20 @@ struct ASTIdentifierNode: public ASTNode
     {}
 };
 
+struct ASTParameterListNode: public ASTNode
+{
+    ASTIterator<ASTIdentifierNode> begin()
+    {
+        assert(!child || child->type == ASTNodeType::FunctionParameter);
+        return static_cast<ASTIdentifierNode*>(child);
+    }
+
+    ASTIterator<ASTIdentifierNode> end()
+    {
+        return nullptr;
+    }
+};
+
 struct ASTStatementListNode: public ASTNode
 {
     Scope scope;
@@ -132,6 +203,21 @@ struct ASTStatementListNode: public ASTNode
         :ASTNode(ASTNodeType::StatementList),
         scope(scope_)
     {}
+};
+
+struct ASTFunctionDefNode: public ASTIdentifierNode
+{
+    ASTParameterListNode* parameters()
+    {
+        assert(child->type == ASTNodeType::ParameterList);
+        return static_cast<ASTParameterListNode*>(child);
+    };
+
+    ASTStatementListNode* body()
+    {
+        assert(!child->sibling || child->sibling->type == ASTNodeType::StatementList);
+        return static_cast<ASTStatementListNode*>(child->sibling);
+    };
 };
 
 struct AST

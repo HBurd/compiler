@@ -585,6 +585,6 @@ void parse(const std::vector<Token>& tokens, AST& ast, Scope& global_scope)
         }
     }
 
-    //print_ast_node(ast.start, global_scope, 0);
-    //print_ast_node(ast.start->sibling, global_scope, 0);
+    print_ast_node(ast.start, global_scope, 0);
+    print_ast_node(ast.start->sibling, global_scope, 0);
 }
