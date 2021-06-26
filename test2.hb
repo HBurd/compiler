@@ -1,13 +1,7 @@
-exit: (code: u32);
-
-exit3: (code: u32)
-{
-    exit(code + 3);
-    return;
-}
+puts: (str: pointer) -> i32;
 
 main: () -> u32
 {
-    exit3(5);
-    return 1;
+    puts("hello compiler!");
+    return 0;
 }

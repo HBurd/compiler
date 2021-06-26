@@ -93,7 +93,7 @@ static bool valid_identifier_char(char c)
 
 static bool valid_token_char(char c)
 {
-    return valid_identifier_char(c) || is_single_char_token(c);
+    return valid_identifier_char(c) || is_single_char_token(c) || c == '"';
 }
 
 static bool valid_terminator(char c)
@@ -165,10 +165,15 @@ static Token get_keyword_token(SubString word)
         result.type = TokenType::TypeName;
         result.type_id = TypeId::Bool;
     }
+    else if (word == "pointer")
+    {
+        result.type = TokenType::TypeName;
+        result.type_id = TypeId::Pointer;
+    }
     else
     {
         result.type = TokenType::Name;
-        result.name = word;
+        result.str = word;
     }
 
     return result;
@@ -236,6 +241,31 @@ void lex(const char* file, std::vector<Token>& tokens)
                 new_token.line = line;
                 new_token.column = position - line_start;
                 new_token.len = 1;
+
+                tokens.push_back(new_token);
+                ++position;
+            }
+            else if (file[position] == '"')
+            {
+                // TODO: Right now a string is just all the characters between "...",
+                // including newlines etc.
+                uint32_t string_start = position;
+                do
+                {
+                    ++position;
+                } while (file[position] != '"');
+
+                Token new_token;
+                new_token.type = TokenType::String;
+                new_token.line = line;
+                new_token.column = string_start - line_start;
+                new_token.len = position - string_start;
+
+                SubString str;
+                str.start = file + string_start + 1;
+                str.len = position - string_start - 2;
+
+                new_token.str = str;
 
                 tokens.push_back(new_token);
                 ++position;

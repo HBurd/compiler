@@ -22,6 +22,7 @@ namespace ASTNodeType
         If,
         While,
         FunctionCall,
+        String,
 
         Count
     };
@@ -47,6 +48,8 @@ namespace TypeId
         Bool,
 
         Function,
+
+        Pointer,
 
         Count
     };
@@ -121,6 +124,15 @@ struct ASTIdentifierNode: public ASTNode
     ASTIdentifierNode(uint32_t type, SymbolData* symbol_)
         :ASTNode(type),
         symbol(symbol_)
+    {}
+};
+
+struct ASTStringNode: public ASTNode
+{
+    SubString str;
+    ASTStringNode(SubString str_)
+        :ASTNode(ASTNodeType::String),
+        str(str_)
     {}
 };
 

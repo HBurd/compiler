@@ -15,6 +15,7 @@ namespace TokenType
         If,
         Else,
         While,
+        String,
         
         Invalid,
 
@@ -34,14 +35,14 @@ struct Token
     union
     {
         uint64_t number_value;
-        SubString name;
+        SubString str;
         uint32_t type_id;       // for default type names, like u32 etc
     };
 
     Token()
     {
         // hack to un-delete default token constructor
-        name = SubString();
+        str = SubString();
     }
 };
 

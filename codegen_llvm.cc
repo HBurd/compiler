@@ -35,6 +35,8 @@ static llvm::Type* get_type(uint32_t type_id, llvm::LLVMContext& llvm_ctxt)
         case TypeId::U64:
         case TypeId::I64:
             return llvm::Type::getInt64Ty(llvm_ctxt);
+        case TypeId::Pointer:
+            return llvm::Type::getInt8PtrTy(llvm_ctxt);
         case TypeId::None:
             return llvm::Type::getVoidTy(llvm_ctxt);
         default:
@@ -122,7 +124,28 @@ struct CodeEmitter
 
         assert((arg_values.size() == function->arg_size()) && "Incorrect number of arguments");
 
+        // TODO: Need to check it symbol is null, right?
         return ir_builder.CreateCall(function, arg_values, make_twine(symbol->name));
+    }
+
+    llvm::Value* emit_string(ASTStringNode* string, SymbolData* symbol)
+    {
+        // Copy and null terminate
+        char* new_str = (char*)malloc(string->str.len + 1);
+        memcpy(new_str, string->str.start, string->str.len);
+        new_str[string->str.len] = 0;
+
+        SubString new_substr;
+        new_substr.start = new_str;
+        new_substr.len = string->str.len + 1;
+
+        SubString value_name;
+        if (symbol)
+        {
+            value_name = symbol->name;
+        }
+
+        return ir_builder.CreateGlobalStringPtr(make_twine(new_substr), make_twine(value_name));
     }
 
     llvm::Value* emit_subexpr(ASTNode* subexpr, SymbolData* symbol)
@@ -142,6 +165,9 @@ struct CodeEmitter
                 break;
             case ASTNodeType::FunctionCall:
                 result = emit_call(subexpr, symbol);
+                break;
+            case ASTNodeType::String:
+                result = emit_string(static_cast<ASTStringNode*>(subexpr), symbol);
                 break;
             default:
                 assert(false && "Invalid syntax tree - expected a subexpression");

@@ -22,6 +22,7 @@ const char* AST_NODE_TYPE_NAME[] = {
     [ASTNodeType::If] = "If",
     [ASTNodeType::While] = "While",
     [ASTNodeType::FunctionCall] = "FunctionCall",
+    [ASTNodeType::String] = "String",
 };
 
 uint8_t OPERATOR_PRECEDENCE[TokenType::Count] = {
@@ -66,6 +67,14 @@ ASTNode* AST::push_orphan(const ASTNode& node)
     uint32_t size;
     switch (node.type)
     {
+        case ASTNodeType::ParameterList:
+        case ASTNodeType::Return:
+        case ASTNodeType::If:
+        case ASTNodeType::While:
+        case ASTNodeType::FunctionCall:
+            align = alignof(ASTNode);
+            size = sizeof(ASTNode);
+            break;
         case ASTNodeType::BinaryOperator:
             align = alignof(ASTBinOpNode);
             size = sizeof(ASTBinOpNode);
@@ -86,9 +95,12 @@ ASTNode* AST::push_orphan(const ASTNode& node)
             align = alignof(ASTStatementListNode);
             size = sizeof(ASTStatementListNode);
             break;
+        case ASTNodeType::String:
+            align = alignof(ASTStringNode);
+            size = sizeof(ASTStringNode);
+            break;
         default:
-            align = alignof(ASTNode);
-            size = sizeof(ASTNode);
+            assert(false && "Unknown node size");
     }
 
     // Get alignment right
@@ -180,9 +192,14 @@ static ASTNode* parse_expression(TokenReader& tokens, AST& ast, Scope& scope, ui
 
         tokens.advance();      // move past ')'
     }
+    else if (tokens.peek().type == TokenType::String)
+    {
+        result = ast.push_orphan(ASTStringNode(tokens.peek().str));
+        tokens.advance();
+    }
     else if (tokens.peek().type == TokenType::Name)
     {
-        SymbolData* symbol = scope.lookup_symbol(tokens.peek().name);
+        SymbolData* symbol = scope.lookup_symbol(tokens.peek().str);
         assert_at_token(symbol, "Unknown identifier", tokens.peek());
 
         result = ast.push_orphan(ASTIdentifierNode(ASTNodeType::Identifier, symbol));
@@ -310,7 +327,7 @@ static void parse_statement(TokenReader& tokens, AST& ast, Scope& scope)
     else if (tokens.peek().type == TokenType::Name && tokens.peek(1).type == '=')
     {
         // Parse assignment
-        SymbolData* symbol = scope.lookup_symbol(tokens.peek().name);
+        SymbolData* symbol = scope.lookup_symbol(tokens.peek().str);
         assert_at_token(symbol, "Unknown symbol", tokens.peek());
 
         ASTNode* assign_node = ast.push(ASTIdentifierNode(ASTNodeType::Assignment, symbol));
@@ -373,7 +390,7 @@ static void parse_parameter_list(TokenReader& tokens, AST& ast, Scope& scope, Sy
             assert_at_token(tokens.peek(1).type == ':', "Expected ':'", tokens.peek(1));
             assert_at_token(tokens.peek(2).type == TokenType::TypeName, "Expected a type", tokens.peek(2));
 
-            SymbolData* new_symbol = scope.push(tokens.peek().name, tokens.peek(2).type_id);
+            SymbolData* new_symbol = scope.push(tokens.peek().str, tokens.peek(2).type_id);
 
             ast.push(ASTIdentifierNode(ASTNodeType::FunctionParameter, new_symbol));
 
@@ -435,14 +452,14 @@ static void parse_def(TokenReader& tokens, AST& ast, Scope& scope)
         tokens.peek());
 
     // check if an entry is already in the symbol table
-    assert_at_token(!scope.lookup_symbol(tokens.peek().name), "Symbol already declared", tokens.peek());
+    assert_at_token(!scope.lookup_symbol(tokens.peek().str), "Symbol already declared", tokens.peek());
 
     // figure out which type of def:
     if (tokens.peek(2).type == '(')
     {
         // this is a function def
 
-        SymbolData* new_symbol = scope.push(tokens.peek().name, TypeId::Invalid);
+        SymbolData* new_symbol = scope.push(tokens.peek().str, TypeId::Invalid);
 
         ASTNode* function_identifier_node = ast.push(ASTIdentifierNode(ASTNodeType::FunctionDef, new_symbol));
 
@@ -496,7 +513,7 @@ static void parse_def(TokenReader& tokens, AST& ast, Scope& scope)
         // the symbol has to be set later because it's not in the scope yet
         ASTNode* variable_def_node = ast.push(ASTIdentifierNode(ASTNodeType::VariableDef, nullptr));
 
-        SubString variable_name = tokens.peek().name;
+        SubString variable_name = tokens.peek().str;
         uint32_t variable_type = tokens.peek(2).type_id;
 
         tokens.advance(4);
